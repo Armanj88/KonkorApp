@@ -15,7 +15,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&family=Lalezar&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&family=Lalezar&display=swap">
 <style>*{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;color-scheme:light}
 [hidden]{display:none!important}
@@ -215,29 +215,10 @@ main{padding-block:14px}
   #print .pf{font-size:10.5pt;color:#555}
 }
 
-/* view panels + tab transitions */
-.view-panels{position:relative;min-height:40vh}
-.vpanel{display:none;opacity:0;transform:translateX(12px);transition:opacity .22s ease,transform .22s ease}
-.vpanel.active{display:block;opacity:1;transform:translateX(0)}
-.vpanel.slide-out-left{display:block;opacity:0;transform:translateX(-18px);pointer-events:none}
-.vpanel.slide-out-right{display:block;opacity:0;transform:translateX(18px);pointer-events:none}
-.vpanel.slide-in-from-left{display:block;opacity:0;transform:translateX(-18px)}
-.vpanel.slide-in-from-right{display:block;opacity:0;transform:translateX(18px)}
-@media (prefers-reduced-motion: reduce){
-  .vpanel{transition:none!important;transform:none!important}
-}
-#pt-wrap{
-  display:none;width:100%;min-height:50vh;
-  padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
-}
-#pt-wrap.active{display:block}
-#pt-wrap .pt-loading{text-align:center;color:var(--muted);padding:40px 16px}
-#app[data-view="pt"] .top .searchrow,
-#app[data-view="pt"] .top .filters{display:none!important}
+#pt-wrap iframe{display:block;width:100%;border:0;background:var(--bg)}
+#app[data-view="pt"] .rv,#app[data-view="pt"] main{display:none!important}
+#app[data-view="pt"] .top{padding-bottom:0;border-bottom:0}
 #app[data-view="pt"] .fab{display:none!important}
-#app[data-view="pt"] .brand h1{font-size:20px}
-/* swipe hint area */
-.swipe-layer{touch-action:pan-y}
 </style>
 </head>
 <body>
@@ -290,17 +271,12 @@ main{padding-block:14px}
     </div>
   </header>
 
-  <main class="wrap swipe-layer" id="main-swipe">
+  <main class="wrap">
     <div id="notice"></div>
-    <div class="view-panels">
-      <div class="vpanel active" id="panel-rv" data-panel="rv">
-        <div class="list" id="list"></div>
-      </div>
-      <div class="vpanel" id="pt-wrap" data-panel="pt" aria-label="جدول تناوبی">
-        <div class="pt-loading" id="pt-loading">در حال بارگذاری جدول تناوبی…</div>
-      </div>
-    </div>
+    <div class="list rv" id="list"></div>
   </main>
+
+  <div id="pt-wrap" hidden><iframe id="pt-frame" title="جدول تناوبی"></iframe></div>
 
   <button class="fab rv" id="fab" aria-label="ثبت مورد جدید"><span>+</span>ثبت</button>
 
@@ -694,8 +670,16 @@ function bindFilters(){
     $('fl-att').value = ''; $('fl-rev').value = ''; $('fl-sort').value = 'new';
     $('fl-imp').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', 'false')); render();
   };
-  $('tab-note').onclick = () => goTab('note');
-  $('tab-q').onclick = () => goTab('q');
+  function selectTab(tab){
+    S.tab = tab;
+    document.querySelectorAll('#tab-note,#tab-q').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === tab)));
+    $('tab-pt').setAttribute('aria-selected', 'false');
+    showView('rv');
+    saveTab(tab);
+    render();
+  }
+  $('tab-note').onclick = () => selectTab('note');
+  $('tab-q').onclick = () => selectTab('q');
 }
 
 /* ---------- list interactions ---------- */
@@ -1020,268 +1004,87 @@ function bindExport(){
   window.addEventListener('afterprint', () => { document.title = 'جمع‌بندی کنکور'; });
 }
 
-/* ---------- periodic table (embedded, no iframe) ---------- */
-const PT = {notes:null, error:'', mounted:false, readyCbs:[]};
+/* ---------- last tab memory ---------- */
+const TAB_LS = 'konkor-last-tab';
+function saveTab(name){
+  try { localStorage.setItem(TAB_LS, name); } catch(_){}
+}
+function readTab(){
+  try {
+    const t = localStorage.getItem(TAB_LS);
+    if (t === 'note' || t === 'q' || t === 'pt') return t;
+  } catch(_){}
+  return 'note';
+}
+function restoreTab(){
+  const t = readTab();
+  if (t === 'pt') showView('pt');
+  else {
+    S.tab = t;
+    document.querySelectorAll('#tab-note,#tab-q').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === t)));
+    $('tab-pt').setAttribute('aria-selected', 'false');
+    showView('rv');
+    render();
+  }
+}
+
+/* ---------- periodic table tab ---------- */
+const PT = {notes:null, frameReady:false, error:''};
 const PT_KEY = /^(cat-[a-z]+|[0-9]{1,3})$/;
-const TABS_ORDER = ['note', 'q', 'pt'];
-let viewAnimating = false;
-
-function scopeCss(css, scope) {
-  function prefixSelectors(block) {
-    return block.replace(/(^|})\s*([^{}@/][^{]*)\{/g, (m, brace, selectors) => {
-      const parts = selectors.split(',').map(s => {
-        s = s.trim();
-        if (!s) return s;
-        if (/^(\d+%|from|to)\b/.test(s)) return s;
-        if (s === scope || s.startsWith(scope + ' ') || s.startsWith(scope + ':') || s.startsWith(scope + '[')) return s;
-        if (s === 'body' || s === 'html' || s.startsWith(':root')) return scope;
-        return scope + ' ' + s;
-      });
-      return brace + '\n' + parts.join(', ') + ' {';
-    });
-  }
-  // Walk and prefix outside of @rules contents recursively via simple split on @media
-  const parts = [];
-  let i = 0;
-  while (i < css.length) {
-    const at = css.indexOf('@', i);
-    if (at < 0) { parts.push(prefixSelectors(css.slice(i))); break; }
-    parts.push(prefixSelectors(css.slice(i, at)));
-    const brace = css.indexOf('{', at);
-    if (brace < 0) { parts.push(css.slice(at)); break; }
-    let depth = 0, j = brace;
-    for (; j < css.length; j++) {
-      if (css[j] === '{') depth++;
-      else if (css[j] === '}') { depth--; if (depth === 0) { j++; break; } }
-    }
-    const head = css.slice(at, brace + 1);
-    const body = css.slice(brace + 1, j - 1);
-    parts.push(head + prefixSelectors(body) + '}');
-    i = j;
-  }
-  return parts.join('').replace(/:root\b/g, scope);
+function ptInit(){
+  const w = $('pt-frame').contentWindow;
+  if (w) w.postMessage({pt:'init', notes:PT.notes || {}, error:PT.error}, location.origin);
 }
-
-function pushPtNotes() {
-  const payload = { notes: PT.notes || {}, error: PT.error || '' };
-  PT.readyCbs.slice().forEach(cb => { try { cb(payload); } catch(_){} });
-}
-
 async function loadPt(){
   PT.notes = {}; PT.error = '';
-  try {
-    const {data, error} = await sb.from('ptable_notes').select('key,items');
-    if (error) PT.error = 'missing';
-    else (data || []).forEach(r => { if (Array.isArray(r.items) && r.items.length) PT.notes[r.key] = r.items; });
-  } catch(_) { PT.error = 'missing'; }
-  pushPtNotes();
+  const {data, error} = await sb.from('ptable_notes').select('key,items');
+  if (error) { PT.error = 'missing'; }
+  else (data || []).forEach(r => { if (Array.isArray(r.items) && r.items.length) PT.notes[r.key] = r.items; });
+  if (PT.frameReady) ptInit();
 }
-
-async function mountPt(){
-  if (PT.mounted) { pushPtNotes(); return; }
-  const wrap = $('pt-wrap');
-  window.__konkorPt = {
-    save: async (key, items) => {
-      if (!uid) return false;
-      try {
-        key = String(key);
-        if (!PT_KEY.test(key) || !Array.isArray(items) || JSON.stringify(items).length >= 200000) return false;
+function sizeFrame(){
+  const f = $('pt-frame'); const top = document.querySelector('.top');
+  const nav = document.querySelector('.bottomnav');
+  const navH = nav ? nav.getBoundingClientRect().height : 64;
+  f.style.height = Math.max(320, window.innerHeight - top.getBoundingClientRect().height - navH - 2) + 'px';
+}
+function showView(v){
+  $('app').dataset.view = v;
+  $('pt-wrap').hidden = v !== 'pt';
+  if (v === 'pt') {
+    $('tab-note').setAttribute('aria-selected', 'false');
+    $('tab-q').setAttribute('aria-selected', 'false');
+    $('tab-pt').setAttribute('aria-selected', 'true');
+    const f = $('pt-frame');
+    if (f.getAttribute('src') !== 'periodic.html') f.setAttribute('src', 'periodic.html');
+    sizeFrame();
+    saveTab('pt');
+  } else {
+    $('tab-pt').setAttribute('aria-selected', 'false');
+    document.querySelectorAll('#tab-note,#tab-q').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === S.tab)));
+  }
+}
+function bindPt(){
+  $('tab-pt').onclick = () => showView('pt');
+  window.addEventListener('resize', () => { if (!$('pt-wrap').hidden) sizeFrame(); });
+  window.addEventListener('message', async e => {
+    if (e.origin !== location.origin || e.source !== $('pt-frame').contentWindow) return;
+    const m = e.data || {};
+    if (m.pt === 'ready') { PT.frameReady = true; if (PT.notes) ptInit(); return; }
+    if (m.pt !== 'save' || !uid) return;
+    let ok = false;
+    try {
+      const key = String(m.key), items = m.items;
+      if (PT_KEY.test(key) && Array.isArray(items) && JSON.stringify(items).length < 200000) {
         const res = items.length
           ? await sb.from('ptable_notes').upsert({user_id:uid, key, items, updated_at:new Date().toISOString()}, {onConflict:'user_id,key'})
           : await sb.from('ptable_notes').delete().eq('user_id', uid).eq('key', key);
-        if (res.error) return false;
-        if (items.length) PT.notes[key] = items; else delete PT.notes[key];
-        return true;
-      } catch(_) { return false; }
-    },
-    onReady: (cb) => {
-      PT.readyCbs.push(cb);
-      if (PT.notes !== null) cb({ notes: PT.notes || {}, error: PT.error || '' });
-    }
-  };
-  try {
-    const text = await fetch('periodic.html', { cache: 'no-cache' }).then(r => {
-      if (!r.ok) throw new Error('fetch');
-      return r.text();
-    });
-    const doc = new DOMParser().parseFromString(text, 'text/html');
-    const loading = $('pt-loading');
-    if (loading) loading.remove();
-    // styles scoped under #pt-wrap
-    doc.querySelectorAll('style').forEach(s => {
-      const st = document.createElement('style');
-      st.setAttribute('data-pt', '1');
-      st.textContent = scopeCss(s.textContent, '#pt-wrap');
-      wrap.appendChild(st);
-    });
-    // body markup (skip scripts)
-    [...doc.body.childNodes].forEach(node => {
-      if (node.nodeType === 1 && node.tagName === 'SCRIPT') return;
-      if (node.nodeType === 1 || (node.nodeType === 3 && node.textContent.trim())) {
-        wrap.appendChild(document.importNode(node, true));
+        ok = !res.error;
+        if (ok) { if (items.length) PT.notes[key] = items; else delete PT.notes[key]; }
       }
-    });
-    // run scripts in order
-    for (const s of doc.querySelectorAll('script')) {
-      const ns = document.createElement('script');
-      if (s.src) ns.src = s.src;
-      else ns.textContent = s.textContent;
-      document.body.appendChild(ns);
-    }
-    PT.mounted = true;
-  } catch (e) {
-    wrap.innerHTML = '<div class="pt-loading">بارگذاری جدول تناوبی نشد. صفحه را دوباره باز کن.</div>';
-  }
-}
-
-function setTabSelected(name){
-  $('tab-note').setAttribute('aria-selected', String(name === 'note'));
-  $('tab-q').setAttribute('aria-selected', String(name === 'q'));
-  $('tab-pt').setAttribute('aria-selected', String(name === 'pt'));
-}
-
-function currentTabName(){
-  return $('app').dataset.view === 'pt' ? 'pt' : S.tab;
-}
-
-function animatePanels(fromName, toName){
-  const fromPanel = fromName === 'pt' ? $('pt-wrap') : $('panel-rv');
-  const toPanel = toName === 'pt' ? $('pt-wrap') : $('panel-rv');
-  const samePanel = fromPanel === toPanel;
-  const fromIdx = TABS_ORDER.indexOf(fromName);
-  const toIdx = TABS_ORDER.indexOf(toName);
-  const dir = toIdx >= fromIdx ? 1 : -1; // 1 = forward (content comes from left in RTL? use visual: swipe left -> next)
-
-  if (samePanel) {
-    // note <-> q: quick fade on list
-    const list = $('list');
-    if (list && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      list.style.transition = 'opacity .18s ease, transform .18s ease';
-      list.style.opacity = '0';
-      list.style.transform = dir > 0 ? 'translateX(10px)' : 'translateX(-10px)';
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          render();
-          list.style.transform = dir > 0 ? 'translateX(-8px)' : 'translateX(8px)';
-          requestAnimationFrame(() => {
-            list.style.opacity = '1';
-            list.style.transform = 'translateX(0)';
-          });
-        }, 90);
-      });
-    } else render();
-    return;
-  }
-
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    fromPanel.classList.remove('active', 'slide-out-left', 'slide-out-right', 'slide-in-from-left', 'slide-in-from-right');
-    toPanel.classList.remove('slide-out-left', 'slide-out-right', 'slide-in-from-left', 'slide-in-from-right');
-    toPanel.classList.add('active');
-    return;
-  }
-
-  viewAnimating = true;
-  const outCls = dir > 0 ? 'slide-out-left' : 'slide-out-right';
-  const inCls = dir > 0 ? 'slide-in-from-right' : 'slide-in-from-left';
-  fromPanel.classList.remove('active');
-  fromPanel.classList.add(outCls);
-  toPanel.classList.add(inCls);
-  toPanel.classList.add('active');
-  // force reflow then clear in transform
-  void toPanel.offsetWidth;
-  toPanel.classList.remove(inCls);
-  setTimeout(() => {
-    fromPanel.classList.remove(outCls);
-    viewAnimating = false;
-  }, 240);
-}
-
-async function showView(v, opts){
-  const animated = !opts || opts.animated !== false;
-  const prev = currentTabName();
-  $('app').dataset.view = v;
-  if (v === 'pt') {
-    setTabSelected('pt');
-    if (animated && prev !== 'pt') animatePanels(prev, 'pt');
-    else {
-      $('panel-rv').classList.remove('active');
-      $('pt-wrap').classList.add('active');
-    }
-    await mountPt();
-  } else {
-    setTabSelected(S.tab);
-    if (animated && prev === 'pt') animatePanels('pt', S.tab);
-    else {
-      $('pt-wrap').classList.remove('active');
-      $('panel-rv').classList.add('active');
-    }
-  }
-}
-
-function goTab(name, opts){
-  if (viewAnimating) return;
-  if (name === 'pt') {
-    showView('pt', opts);
-    return;
-  }
-  const prev = currentTabName();
-  S.tab = name;
-  if ($('app').dataset.view === 'pt') {
-    showView('rv', opts);
-    if (opts && opts.animated === false) render();
-    else if (prev === 'pt') { /* animation handles */ render(); }
-    else render();
-  } else {
-    if (opts && opts.animated === false) { setTabSelected(name); render(); }
-    else { setTabSelected(name); animatePanels(prev, name); }
-  }
-}
-
-function bindSwipe(){
-  const el = $('main-swipe');
-  if (!el) return;
-  let x0 = 0, y0 = 0, tracking = false, axis = null;
-  const THRESH = 56;
-  el.addEventListener('touchstart', e => {
-    if (e.touches.length !== 1) return;
-    // don't steal when interacting with form controls or horizontal scroller in PT
-    const t = e.target;
-    if (t.closest && (t.closest('input,textarea,select,button,a,.scroller,.sheet,.back,.lightbox'))) return;
-    tracking = true; axis = null;
-    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
-  }, { passive: true });
-  el.addEventListener('touchmove', e => {
-    if (!tracking || e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - x0;
-    const dy = e.touches[0].clientY - y0;
-    if (!axis) {
-      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-      axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-    }
-  }, { passive: true });
-  el.addEventListener('touchend', e => {
-    if (!tracking) return;
-    tracking = false;
-    if (axis !== 'x') return;
-    const dx = (e.changedTouches[0].clientX - x0);
-    if (Math.abs(dx) < THRESH) return;
-    // RTL: swipe finger to the left (dx < 0) -> go to next tab in order
-    const cur = currentTabName();
-    const idx = TABS_ORDER.indexOf(cur);
-    if (dx < 0) {
-      const next = TABS_ORDER[Math.min(TABS_ORDER.length - 1, idx + 1)];
-      if (next !== cur) goTab(next);
-    } else {
-      const next = TABS_ORDER[Math.max(0, idx - 1)];
-      if (next !== cur) goTab(next);
-    }
-  }, { passive: true });
-  el.addEventListener('touchcancel', () => { tracking = false; }, { passive: true });
-}
-
-function bindPt(){
-  $('tab-pt').onclick = () => goTab('pt');
-  bindSwipe();
+    } catch(_){}
+    e.source.postMessage({pt:'saved', id:m.id, ok}, location.origin);
+  });
 }
 
 /* ---------- auth & boot ---------- */
@@ -1292,12 +1095,13 @@ async function startApp(user){
   S.loaded = false; S.items = []; render();
   try { await loadAll(); }
   catch(e){ S.loaded = true; note('خواندن اطلاعات انجام نشد. صفحه رو دوباره باز کن.'); render(); }
-  try { await loadPt(); } catch(e){ PT.notes = {}; PT.error = 'missing'; pushPtNotes(); }
+  try { await loadPt(); } catch(e){ PT.notes = {}; PT.error = 'missing'; if (PT.frameReady) ptInit(); }
+  restoreTab();
 }
 function stopApp(){
   uid = null; S.items = []; S.loaded = false; URLS.clear();
-  PT.notes = null; PT.error = ''; PT.readyCbs = [];
-  showView('rv', {animated:false});
+  PT.notes = null; PT.frameReady = false; PT.error = '';
+  $('pt-frame').setAttribute('src', 'about:blank'); showView('rv');
   if (F) closeSheet();
   showAuth();
 }
