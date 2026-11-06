@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1B4F8C">
+<title>جمع‌بندی کنکور</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&family=Lalezar&display=swap">
+<style>*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;color-scheme:light}
+[hidden]{display:none!important}
+body{margin:0}
+
+/* Layout: a notebook-like single column. Sticky header (tabs + search), card list, floating add button, bottom sheet for add/edit. */
+:root{
+  --bg:#EEF2F6;
+  --surface:#FFFFFF;
+  --surface-2:#F5F8FB;
+  --ink:#13202C;
+  --muted:#5A6B7B;
+  --line:#D9E1E8;
+  --accent:#1B4F8C;
+  --accent-ink:#FFFFFF;
+  --accent-soft:#E1ECF8;
+  --i1:#5A84B3;
+  --i2:#B97F00;
+  --i3:#C8372F;
+  --danger:#C8372F;
+  --font-body:'Vazirmatn',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;
+  --font-display:'Lalezar','Vazirmatn',system-ui,sans-serif;
+  --gutter-l:max(16px,env(safe-area-inset-left,0px));
+  --gutter-r:max(16px,env(safe-area-inset-right,0px));
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E151C;--surface:#16202A;--surface-2:#1C2833;--ink:#E7EDF3;--muted:#93A3B3;--line:#293644;
+    --accent:#7DB1F2;--accent-ink:#08131E;--accent-soft:#1D2E42;
+    --i1:#8FB4DE;--i2:#E5B12A;--i3:#F0766F;--danger:#F0766F;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E151C;--surface:#16202A;--surface-2:#1C2833;--ink:#E7EDF3;--muted:#93A3B3;--line:#293644;
+  --accent:#7DB1F2;--accent-ink:#08131E;--accent-soft:#1D2E42;
+  --i1:#8FB4DE;--i2:#E5B12A;--i3:#F0766F;--danger:#F0766F;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:var(--font-body);font-size:15px;line-height:1.75;
+  direction:rtl;text-align:right;
+  padding-bottom:96px;
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:720px;margin:0 auto;padding-left:var(--gutter-l);padding-right:var(--gutter-r)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg);border-bottom:1px solid var(--line);padding-block:12px 10px}
+.brand{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.brand h1{margin:0;font-family:var(--font-display);font-weight:400;font-size:26px;line-height:1.3;letter-spacing:0}
+.stats{color:var(--muted);font-size:13px;white-space:nowrap}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:10px}
+.tab{border:0;background:transparent;border-radius:9px;padding:8px 10px;font-weight:700;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px;min-height:40px}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.tab .n{font-size:12px;font-weight:500;background:var(--accent-soft);color:var(--accent);border-radius:20px;padding:0 8px;min-width:24px;text-align:center}
+.searchrow{display:flex;gap:8px}
+.searchrow input[type=search]{flex:1;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px;min-height:44px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 14px;min-height:44px;font-weight:500}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn .badge{display:inline-block;background:var(--accent);color:var(--accent-ink);border-radius:20px;font-size:12px;padding:0 7px;margin-inline-start:6px}
+
+/* filters */
+.filters{margin-top:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:10px}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field{display:grid;gap:4px;min-width:0}
+.field>label,.lbl{font-size:12.5px;color:var(--muted);font-weight:500}
+select,textarea,input[type=text],input[type=email],input[type=password]{width:100%;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 11px;min-height:44px}
+textarea{min-height:110px;resize:vertical;line-height:1.8}
+select:disabled{opacity:.55}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:20px;padding:5px 13px;min-height:36px;font-size:13.5px}
+.chip[aria-pressed="true"],.chip[aria-checked="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.chip.i1[aria-pressed="true"],.chip.i1[aria-checked="true"]{background:var(--i1);border-color:var(--i1);color:#fff}
+.chip.i2[aria-pressed="true"],.chip.i2[aria-checked="true"]{background:var(--i2);border-color:var(--i2);color:#fff}
+.chip.i3[aria-pressed="true"],.chip.i3[aria-checked="true"]{background:var(--i3);border-color:var(--i3);color:#fff}
+
+/* cards */
+main{padding-block:14px}
+.notice{background:var(--accent-soft);color:var(--accent);border-radius:10px;padding:8px 12px;font-size:13px;margin-bottom:12px}
+.list{display:grid;gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:8px;cursor:pointer;min-width:0}
+.card.done{opacity:.72}
+.crumb{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.crumb b{color:var(--ink);font-weight:700}
+.crumb .sep{opacity:.5}
+.cardhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.imp{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;white-space:nowrap}
+.meter{display:inline-flex;gap:2px;align-items:flex-end;height:14px}
+.meter i{display:block;width:5px;border-radius:2px;background:var(--line)}
+.meter i:nth-child(1){height:6px}.meter i:nth-child(2){height:10px}.meter i:nth-child(3){height:14px}
+.imp.v1{color:var(--i1)}.imp.v1 .meter i:nth-child(-n+1){background:var(--i1)}
+.imp.v2{color:var(--i2)}.imp.v2 .meter i:nth-child(-n+2){background:var(--i2)}
+.imp.v3{color:var(--i3)}.imp.v3 .meter i:nth-child(-n+3){background:var(--i3)}
+.body{white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.ans{border-inline-start:3px solid var(--accent);padding-inline-start:10px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.ans b{color:var(--accent)}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px}
+.thumb{width:68px;height:68px;border-radius:10px;border:1px solid var(--line);object-fit:cover;background:var(--surface-2);cursor:zoom-in}
+.pdf{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:0 12px;min-height:44px;font-size:13px;text-decoration:none;color:var(--ink);max-width:100%}
+.pdf span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
+.pdf em{font-style:normal;font-weight:700;color:var(--danger);font-size:12px}
+.cardfoot{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted);font-size:12.5px}
+.rev{border:1px solid var(--line);background:var(--surface-2);border-radius:20px;padding:3px 12px;min-height:36px;font-size:12.5px}
+.rev[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:700}
+.empty{text-align:center;color:var(--muted);padding:44px 12px;display:grid;gap:6px}
+.empty strong{color:var(--ink);font-size:16px}
+
+/* floating add button */
+.fab{position:fixed;z-index:20;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--accent-ink);border:0;border-radius:28px;min-height:52px;padding:0 22px;font-weight:700;box-shadow:0 6px 18px rgba(10,30,60,.28);display:flex;align-items:center;gap:8px}
+.fab span{font-size:22px;line-height:1}
+
+/* sheet */
+.back{position:fixed;inset:0;z-index:50;background:rgba(8,16,24,.55);display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--surface);width:100%;max-width:680px;max-height:calc(100dvh - env(safe-area-inset-top,0px) - 16px);overflow-y:auto;border-radius:18px 18px 0 0;padding:16px var(--gutter-r) calc(18px + env(safe-area-inset-bottom,0px)) var(--gutter-l);display:grid;gap:14px}
+.sheethead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sheethead h2{margin:0;font-size:18px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:4px}
+.seg button{border:0;background:transparent;border-radius:9px;min-height:40px;font-weight:700;color:var(--muted)}
+.seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.pick{display:grid;gap:10px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px}
+.pick h3{margin:0;font-size:13.5px;color:var(--muted);font-weight:500}
+.rowadd{display:flex;gap:8px;align-items:center}
+.linkbtn{border:0;background:transparent;color:var(--accent);font-weight:700;padding:4px 0;min-height:32px;text-align:right;font-size:13.5px}
+.newrow{display:flex;gap:8px}
+.files{display:grid;gap:8px}
+.fitem{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:6px 8px;background:var(--surface-2);min-width:0}
+.fitem img{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none}
+.fitem .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
+.fitem .x{border:0;background:transparent;color:var(--danger);font-size:20px;min-width:44px;min-height:44px}
+.pdfico{width:44px;height:44px;border-radius:8px;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--danger);flex:none}
+.err{color:var(--danger);font-size:13.5px;min-height:1px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.actions .primary{flex:1;min-width:140px}
+.lightbox{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.9);display:grid;place-items:center;padding:calc(12px + env(safe-area-inset-top,0px)) var(--gutter-r) calc(12px + env(safe-area-inset-bottom,0px)) var(--gutter-l)}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain}
+@media (prefers-reduced-motion: no-preference){
+  .card,.chip,.btn{transition:background-color .15s,border-color .15s}
+}
+
+.authwrap{min-height:100dvh;display:grid;place-items:center;padding:24px var(--gutter-r) 24px var(--gutter-l);background:var(--bg);color:var(--ink);font-family:var(--font-body);line-height:1.75}
+.authcard{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;display:grid;gap:14px}
+.authcard h1{margin:0;font-family:var(--font-display);font-weight:400;font-size:28px;line-height:1.3}
+.authcard p{margin:0;color:var(--muted);font-size:14px}
+.authcard input{direction:ltr;text-align:left}
+</style>
+</head>
+<body>
+<div class="authwrap" id="auth" lang="fa" dir="rtl" hidden>
+  <form class="authcard" id="auth-form" novalidate>
+    <h1>جمع‌بندی کنکور</h1>
+    <p>برای دیدن و ذخیره‌ی نکته‌ها و سوال‌ها وارد شو.</p>
+    <div class="field"><label for="a-email">ایمیل</label><input id="a-email" type="email" autocomplete="email" inputmode="email"></div>
+    <div class="field"><label for="a-pass">رمز عبور</label><input id="a-pass" type="password" autocomplete="current-password"></div>
+    <div class="err" id="a-err" role="alert"></div>
+    <div class="actions"><button type="submit" class="btn primary" id="auth-in">ورود</button><button type="button" class="btn" id="auth-signup">ساخت حساب</button></div>
+  </form>
+</div>
+<div lang="fa" dir="rtl" id="app" hidden>
+  <header class="top">
+    <div class="wrap">
+      <div class="brand">
+        <h1>جمع‌بندی کنکور</h1>
+        <div style="display:flex;align-items:center;gap:10px"><div class="stats" id="stats"></div><button class="btn" id="btn-out" type="button" style="min-height:36px;padding:2px 12px;font-size:13px">خروج</button></div>
+      </div>
+      <div class="tabs" role="tablist" aria-label="بخش‌ها">
+        <button class="tab" id="tab-note" role="tab" aria-selected="true" data-tab="note">نکات <span class="n" id="cnt-note">۰</span></button>
+        <button class="tab" id="tab-q" role="tab" aria-selected="false" data-tab="q">سوالات <span class="n" id="cnt-q">۰</span></button>
+      </div>
+      <div class="searchrow">
+        <input id="q" type="search" placeholder="جستجو در متن، درس و مبحث…" autocomplete="off">
+        <button class="btn" id="btn-filter" aria-expanded="false" aria-controls="filters">فیلتر<span class="badge" id="fbadge" hidden></span></button>
+      </div>
+      <div class="filters" id="filters" hidden>
+        <div class="fgrid">
+          <div class="field"><label for="fl-subject">درس</label><select id="fl-subject"></select></div>
+          <div class="field"><label for="fl-chapter">مبحث</label><select id="fl-chapter" disabled></select></div>
+        </div>
+        <div class="field"><span class="lbl">سطح اهمیت</span>
+          <div class="chips" id="fl-imp">
+            <button class="chip i3" data-v="3" aria-pressed="false">زیاد</button>
+            <button class="chip i2" data-v="2" aria-pressed="false">متوسط</button>
+            <button class="chip i1" data-v="1" aria-pressed="false">کم</button>
+          </div>
+        </div>
+        <div class="fgrid">
+          <div class="field"><label for="fl-att">فایل پیوست</label>
+            <select id="fl-att"><option value="">همه</option><option value="any">دارای فایل</option><option value="img">دارای عکس</option><option value="pdf">دارای PDF</option><option value="none">بدون فایل</option></select></div>
+          <div class="field"><label for="fl-rev">وضعیت مرور</label>
+            <select id="fl-rev"><option value="">همه</option><option value="no">مرور نشده</option><option value="yes">مرور شده</option></select></div>
+        </div>
+        <div class="fgrid">
+          <div class="field"><label for="fl-sort">مرتب‌سازی</label>
+            <select id="fl-sort"><option value="new">جدیدترین</option><option value="old">قدیمی‌ترین</option><option value="imp">مهم‌ترین</option></select></div>
+          <div class="field" style="align-content:end"><button class="btn" id="fl-clear">پاک کردن فیلترها</button></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div id="notice"></div>
+    <div class="list" id="list"></div>
+  </main>
+
+  <button class="fab" id="fab" aria-label="ثبت مورد جدید"><span>+</span>ثبت</button>
+
+  <div class="back" id="back" hidden>
+    <form class="sheet" id="form" role="dialog" aria-modal="true" aria-labelledby="sheet-title" novalidate>
+      <div class="sheethead">
+        <h2 id="sheet-title">ثبت مورد جدید</h2>
+        <button type="button" class="btn" id="f-close">بستن</button>
+      </div>
+
+      <div class="seg" role="radiogroup" aria-label="نوع مورد">
+        <button type="button" role="radio" id="f-k-note" data-k="note" aria-checked="true">نکته</button>
+        <button type="button" role="radio" id="f-k-q" data-k="q" aria-checked="false">سوال</button>
+      </div>
+
+      <div class="pick">
+        <h3>اول درس و مبحث رو مشخص کن</h3>
+        <div class="field"><label for="f-subject">درس</label><select id="f-subject"></select></div>
+        <div class="field"><label for="f-chapter">مبحث (فصل)</label><select id="f-chapter" disabled></select>
+          <button type="button" class="linkbtn" id="f-add-ch" disabled>+ مبحث جدید</button>
+          <div class="newrow" id="f-newch" hidden><input type="text" id="f-newch-in" placeholder="نام مبحث جدید"><button type="button" class="btn primary" id="f-newch-ok">افزودن</button></div>
+        </div>
+        <div class="field"><label for="f-sub">زیرمبحث (اختیاری)</label><select id="f-sub" disabled></select>
+          <button type="button" class="linkbtn" id="f-add-sub" disabled>+ زیرمبحث جدید</button>
+          <div class="newrow" id="f-newsub" hidden><input type="text" id="f-newsub-in" placeholder="نام زیرمبحث جدید"><button type="button" class="btn primary" id="f-newsub-ok">افزودن</button></div>
+        </div>
+      </div>
+
+      <div class="field"><span class="lbl">سطح اهمیت</span>
+        <div class="chips" id="f-imp" role="radiogroup" aria-label="سطح اهمیت">
+          <button type="button" class="chip i1" role="radio" data-v="1" aria-checked="false">کم</button>
+          <button type="button" class="chip i2" role="radio" data-v="2" aria-checked="true">متوسط</button>
+          <button type="button" class="chip i3" role="radio" data-v="3" aria-checked="false">زیاد</button>
+        </div>
+      </div>
+
+      <div class="field"><label for="f-text" id="f-text-lbl">متن نکته</label><textarea id="f-text" placeholder="متن رو تایپ یا پیست کن"></textarea></div>
+      <div class="field" id="f-ans-wrap" hidden><label for="f-ans">پاسخ / راه‌حل (اختیاری)</label><textarea id="f-ans"></textarea></div>
+
+      <div class="field">
+        <span class="lbl">عکس یا PDF</span>
+        <div class="files" id="f-files"></div>
+        <input type="file" id="f-file" accept="image/*,application/pdf" multiple hidden>
+        <button type="button" class="btn" id="f-pick">افزودن عکس یا PDF</button>
+      </div>
+
+      <div class="err" id="f-err" role="alert"></div>
+      <div class="actions">
+        <button type="submit" class="btn primary" id="f-save">ذخیره</button>
+        <button type="button" class="btn danger" id="f-del" hidden>حذف</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="lightbox" id="lightbox" hidden><img alt="عکس پیوست"></div>
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+/* ---------- Supabase settings: fill these two values ---------- */
+const SUPABASE_URL = 'https://blspbacdagqyfuhlkumm.supabase.co';        // e.g. https://abcdxyz.supabase.co
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsc3BiYWNkYWdxeWZ1aGxrdW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5NTI5NzUsImV4cCI6MjEwOTUyODk3NX0.ZzfXZ4CqipJ7hjfd0Rx8HdghzILjy0ckZhzQbbCPHzg'; // the public anon / publishable key (never the service_role key)
+const BUCKET = 'attachments';
+
+/* ---------- curriculum (رشته ریاضی و فیزیک) ---------- */
+const G = [
+ ['اختصاصی دهم', [
+  ['riazi1','ریاضی ۱ (دهم)',[
+    ['مجموعه، الگو و دنباله',['مجموعه‌های متناهی و نامتناهی','متمم یک مجموعه','الگو و دنباله','دنباله حسابی','دنباله هندسی']],
+    ['مثلثات',['نسبت‌های مثلثاتی','دایره مثلثاتی','روابط بین نسبت‌های مثلثاتی']],
+    ['توان‌های گویا و عبارت‌های جبری',['ریشه و توان','رادیکال و ریشه‌گیری','عبارت‌های جبری و اتحادها','تجزیه عبارت‌ها','عبارت‌های گویا']],
+    ['معادله‌ها و نامعادله‌ها',['معادله درجه دوم و روش‌های حل','سهمی','تعیین علامت و نامعادله‌ها','معادله‌های گویا و گنگ','قدرمطلق']],
+    ['تابع',['مفهوم تابع و بازنمایی آن','دامنه و برد','انواع تابع','اعمال روی توابع']],
+    ['شمارش، بدون شمردن',['اصل جمع و ضرب','جایگشت و فاکتوریل','ترکیب']],
+    ['آمار و احتمال',['احتمال و پیشامد','آمار توصیفی']]]],
+  ['hendese1','هندسه ۱ (دهم)',[
+    ['ترسیم‌های هندسی و استدلال',['ترسیم‌های هندسی','استدلال']],
+    ['قضیه تالس، تشابه و کاربردهای آن',['قضیه تالس','تشابه مثلث‌ها','کاربردهای تشابه']],
+    ['چندضلعی‌ها',['چندضلعی‌ها و ویژگی‌ها','مساحت و کاربردهای آن']],
+    ['تجسم فضایی',['خط و صفحه','تفکر تجسمی']]]],
+  ['fizik1','فیزیک ۱ (دهم)',[
+    ['فیزیک و اندازه‌گیری',['فیزیک، دانشی بنیادی','اندازه‌گیری و یکاها','دقت و نمادگذاری علمی','چگالی']],
+    ['ویژگی‌های فیزیکی مواد',['نیروهای بین مولکولی','فشار در شاره‌ها','اصل پاسکال','شناوری و ارشمیدس','شاره‌ها در حرکت']],
+    ['کار، انرژی و توان',['انرژی جنبشی','کار و قضیه کار–انرژی','انرژی پتانسیل و پایستگی انرژی','توان و بازده']],
+    ['دما و گرما',['دما و دماسنجی','انبساط گرمایی','گرما و ظرفیت گرمایی','تغییر حالت','انتقال گرما','گازها']],
+    ['ترمودینامیک',['قانون اول ترمودینامیک','فرایندهای ترمودینامیکی','ماشین گرمایی و یخچال','قانون دوم و بازده']]]],
+  ['shimi1','شیمی ۱ (دهم)',[
+    ['کیهان زادگاه الفبای هستی',['پیدایش عنصرها','ایزوتوپ‌ها و جرم اتمی','طیف و ساختار اتم','آرایش الکترونی','جدول تناوبی','مول']],
+    ['ردپای گازها در زندگی',['هواکره','گازهای گلخانه‌ای و تغییر اقلیم','واکنش‌های گازها','حجم مولی گازها']],
+    ['آب، آهنگ زندگی',['انحلال‌پذیری و املاح','قطبی بودن و پیوند هیدروژنی','غلظت محلول‌ها','واکنش‌های رسوبی']]]]
+ ]],
+ ['اختصاصی یازدهم', [
+  ['hesaban1','حسابان ۱ (یازدهم)',[
+    ['جبر و معادله',['دنباله حسابی و هندسی و مجموع جملات','معادله‌های درجه دوم و سهمی','معادله‌های گویا و رادیکالی','قدرمطلق و نامعادله']],
+    ['تابع',['ضابطه و نمودار توابع','انواع تابع','جزء صحیح و قدرمطلق','ترکیب و وارون تابع']],
+    ['مثلثات',['رادیان و دایره مثلثاتی','روابط مجموع و تفاضل زوایا','زاویه مضاعف','معادلات مثلثاتی','توابع مثلثاتی']],
+    ['توابع نمایی و لگاریتمی',['تابع نمایی','تابع لگاریتمی','خواص لگاریتم','معادله‌های نمایی و لگاریتمی']],
+    ['حد و پیوستگی',['حد در یک نقطه','حدهای یک‌طرفه','قضایای حد','پیوستگی']]]],
+  ['hendese2','هندسه ۲ (یازدهم)',[
+    ['دایره',['مفاهیم اولیه و زاویه‌ها در دایره','رابطه‌های طولی در دایره','چندضلعی‌های محاطی و محیطی']],
+    ['تبدیل‌های هندسی و کاربردها',['تبدیل‌های هندسی','کاربرد تبدیل‌ها']],
+    ['روابط طولی در مثلث',['قضیه سینوس‌ها','قضیه کسینوس‌ها','قضیه نیمسازها و فیثاغورس','مساحت مثلث']]]],
+  ['amar','آمار و احتمال (یازدهم)',[
+    ['احتمال',['فضای نمونه و پیشامد','احتمال شرطی','پیشامدهای مستقل']],
+    ['آمار توصیفی',['معیارهای مرکزی','معیارهای پراکندگی','نمودارها']],
+    ['آمار استنباطی',['جامعه و نمونه','برآورد']]]],
+  ['fizik2','فیزیک ۲ (یازدهم)',[
+    ['الکتریسیته ساکن',['بار الکتریکی و قانون کولن','میدان الکتریکی','پتانسیل و انرژی پتانسیل الکتریکی','خازن']],
+    ['جریان الکتریکی و مدارهای جریان مستقیم',['جریان و مقاومت','نیروی محرکه و مدار','ترکیب مقاومت‌ها','توان در مدار']],
+    ['مغناطیس',['میدان مغناطیسی','نیروی مغناطیسی بر بار و سیم','میدان حاصل از جریان']],
+    ['القای الکترومغناطیسی و جریان متناوب',['شار مغناطیسی و قانون فارادی','قانون لنز','القاگرها و خودالقایی','جریان متناوب']]]],
+  ['shimi2','شیمی ۲ (یازدهم)',[
+    ['قدر هدایای زمینی را بدانیم',['واکنش‌پذیری فلزها','استخراج فلزها و آهن','ترکیب‌های یونی و شبکه بلور','رفتار عنصرها و جدول تناوبی']],
+    ['در پی غذای سالم',['ترموشیمی و آنتالپی','سرعت واکنش','عوامل مؤثر بر سرعت','انرژی فعال و کاتالیزگر']],
+    ['پوشاک، نیازی پایان‌ناپذیر',['پلیمرها','پلی‌استرها و پلی‌آمیدها','پلیمرهای طبیعی و مصنوعی','بازیافت']]]]
+ ]],
+ ['اختصاصی دوازدهم', [
+  ['hesaban2','حسابان ۲ (دوازدهم)',[
+    ['تابع',['تبدیل نمودار توابع','ترکیب توابع','وارون تابع','صعودی و نزولی']],
+    ['مثلثات',['توابع مثلثاتی','معادلات مثلثاتی','رسم نمودار']],
+    ['حدهای نامتناهی و حد در بی‌نهایت',['حدهای نامتناهی','حد در بی‌نهایت','مجانب‌ها']],
+    ['مشتق',['آهنگ تغییر','تعریف مشتق','قواعد مشتق‌گیری','مشتق مرکب و زنجیره‌ای','مماس بر نمودار']],
+    ['کاربردهای مشتق',['صعودی و نزولی','اکسترمم نسبی و مطلق','بهینه‌سازی','تقعر و نقطه عطف','رسم نمودار']]]],
+  ['hendese3','هندسه ۳ (دوازدهم)',[
+    ['ماتریس و کاربردها',['ماتریس و عمل‌های روی آن','دترمینان و وارون ماتریس','دستگاه معادله‌های خطی']],
+    ['مقاطع مخروطی',['دایره','بیضی','سهمی','هذلولی']],
+    ['بردارها',['بردار در فضا','ضرب داخلی','ضرب خارجی','حجم متوازی‌السطوح']]]],
+  ['gosaste','ریاضیات گسسته (دوازدهم)',[
+    ['آشنایی با نظریه اعداد',['استدلال و اثبات','بخش‌پذیری','ب.م.م و ک.م.م','هم‌نهشتی','معادله‌های سیاله']],
+    ['گراف و مدل‌سازی',['معرفی گراف','مسیر و دور','همبندی','گراف اویلری','گراف هامیلتونی','رنگ‌آمیزی','گراف مسطح']],
+    ['ترکیبیات (شمارش)',['جایگشت و ترکیب','اصل لانه کبوتری','اصل شمول و عدم شمول','ضرایب دوجمله‌ای']]]],
+  ['fizik3','فیزیک ۳ (دوازدهم)',[
+    ['حرکت بر خط راست',['شناخت حرکت','حرکت با سرعت ثابت','حرکت با شتاب ثابت','سقوط آزاد']],
+    ['دینامیک',['قوانین نیوتون','نیروی وزن، عمودی سطح، اصطکاک','تکانه و پایستگی تکانه','حرکت دایره‌ای','گرانش']],
+    ['نوسان و موج',['نوسان ساده','انرژی در نوسان','موج و انواع آن','موج صوتی','موج الکترومغناطیسی']],
+    ['برهم‌کنش‌های موج',['بازتاب و شکست','تداخل و پراش','امواج ایستاده','اثر دوپلر']],
+    ['آشنایی با فیزیک اتمی',['مدل‌های اتمی','طیف خطی','لیزر','اثر فوتوالکتریک']],
+    ['آشنایی با فیزیک هسته‌ای',['ساختار هسته','پرتوزایی','شکافت و گداخت','انرژی پیوندی']]]],
+  ['shimi3','شیمی ۳ (دوازدهم)',[
+    ['مولکول‌ها در خدمت تندرستی',['صابون و پاک‌کننده‌ها','اسیدها و بازها','pH و قدرت اسیدی','تعادل یونش']],
+    ['آسایش و رفاه در سایه شیمی',['سرعت واکنش','تعادل شیمیایی','اصل لوشاتلیه','ثابت تعادل','صنعت آمونیاک']],
+    ['شیمی جلوه‌ای از هنر، زیبایی و ماندگاری',['سلول‌های الکتروشیمیایی','سلول گالوانی و پتانسیل کاهشی','خوردگی و آبکاری','الکترولیز']],
+    ['شیمی، راهی به سوی آینده‌ای روشن‌تر',['ساختار مواد و بلورها','نیروهای بین ذره‌ای','جامدهای کووالانسی و یونی','مواد در فناوری']]]]
+ ]],
+ ['عمومی دوازدهم', [
+  ['farsi3','فارسی ۳ (دوازدهم)',[
+    ['ادبیات تعلیمی',['درس‌ها و متن‌ها']],
+    ['ادبیات غنایی',['درس‌ها و متن‌ها']],
+    ['ادبیات پایداری',['درس‌ها و متن‌ها']],
+    ['ادبیات حماسی',['درس‌ها و متن‌ها']],
+    ['ادبیات داستانی',['درس‌ها و متن‌ها']],
+    ['ادبیات انقلاب اسلامی',['درس‌ها و متن‌ها']],
+    ['دانش زبانی',['لغت و املا','دستور زبان']],
+    ['دانش ادبی',['آرایه‌های ادبی','وزن و قافیه']],
+    ['تاریخ ادبیات',['شاعران و نویسندگان','آثار ادبی']],
+    ['قرابت معنایی و مفهوم',['مفهوم','قرابت معنایی']]]],
+  ['arabi3','عربی، زبان قرآن ۳ (دوازدهم)',[
+    ['درس ۱',['واژگان','ترجمه','قواعد']],
+    ['درس ۲',['واژگان','ترجمه','قواعد']],
+    ['درس ۳',['واژگان','ترجمه','قواعد']],
+    ['درس ۴',['واژگان','ترجمه','قواعد']],
+    ['ترجمه و تعریب',['ترجمه عربی به فارسی','تعریب (فارسی به عربی)']],
+    ['قواعد',['فعل‌ها (معلوم و مجهول)','اسلوب شرط','اسلوب حصر و استثنا','حروف مشبهه بالفعل و لای نفی جنس','تحلیل صرفی و اعراب']],
+    ['درک مطلب',['درک مطلب']]]],
+  ['din3','دین و زندگی ۳ (دوازدهم)',[
+    ['درس ۱',['مفاهیم کلیدی','آیات و روایات']],['درس ۲',['مفاهیم کلیدی','آیات و روایات']],
+    ['درس ۳',['مفاهیم کلیدی','آیات و روایات']],['درس ۴',['مفاهیم کلیدی','آیات و روایات']],
+    ['درس ۵',['مفاهیم کلیدی','آیات و روایات']],['درس ۶',['مفاهیم کلیدی','آیات و روایات']],
+    ['درس ۷',['مفاهیم کلیدی','آیات و روایات']],['درس ۸',['مفاهیم کلیدی','آیات و روایات']],
+    ['درس ۹',['مفاهیم کلیدی','آیات و روایات']],['درس ۱۰',['مفاهیم کلیدی','آیات و روایات']]]],
+  ['eng3','زبان انگلیسی ۳ (دوازدهم)',[
+    ['Lesson 1',['Vocabulary','Grammar','Reading','Cloze Test']],
+    ['Lesson 2',['Vocabulary','Grammar','Reading','Cloze Test']],
+    ['Lesson 3',['Vocabulary','Grammar','Reading','Cloze Test']]]]
+ ]]
+];
+const SUBJ = {};
+G.forEach(([grp, list]) => list.forEach(([id, name, ch]) => { SUBJ[id] = {id, name, grp, ch}; }));
+
+/* ---------- state & helpers ---------- */
+const S = { tab:'note', q:'', f:{subject:'',chapter:'',imp:[],att:'',rev:'',sort:'new'}, items:[], custom:{chapters:[],subs:[]}, loaded:false };
+let sb = null, uid = null, F = null, delTimer = null;
+const URLS = new Map();
+const $ = id => document.getElementById(id);
+const fa = n => Number(n).toLocaleString('fa-IR');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => String(s ?? '').replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/[ً-ٰٟ‌]/g,'')
+  .replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).toLowerCase().trim();
+const IMP = ['', 'کم', 'متوسط', 'زیاد'];
+const dateFa = ts => { try { return new Intl.DateTimeFormat('fa-IR',{dateStyle:'medium'}).format(new Date(ts)); } catch(e){ return ''; } };
+
+function chaptersOf(sid){
+  const base = (SUBJ[sid]?.ch || []).map(c => c[0]);
+  const extra = S.custom.chapters.filter(c => c.s === sid).map(c => c.n).filter(n => !base.includes(n));
+  return [...base, ...extra];
+}
+function subsOf(sid, ch){
+  const base = SUBJ[sid]?.ch.find(c => c[0] === ch)?.[1] || [];
+  const extra = S.custom.subs.filter(c => c.s === sid && c.c === ch).map(c => c.n).filter(n => !base.includes(n));
+  return [...base, ...extra];
+}
+function subjectOptions(sel, placeholder){
+  let h = `<option value="">${placeholder}</option>`;
+  G.forEach(([grp, list]) => { h += `<optgroup label="${esc(grp)}">` + list.map(s => `<option value="${s[0]}">${esc(s[1])}</option>`).join('') + '</optgroup>'; });
+  sel.innerHTML = h;
+}
+function fillSelect(sel, list, placeholder, value){
+  sel.innerHTML = `<option value="">${esc(placeholder)}</option>` + list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  sel.value = value || '';
+}
+
+/* ---------- storage (Supabase) ---------- */
+const urlOf = p => URLS.get(p)?.url || '';
+function note(msg, ms){
+  const n = $('notice'); n.innerHTML = msg ? `<div class="notice">${esc(msg)}</div>` : '';
+  if (msg && ms) setTimeout(() => { if (n.textContent.includes(msg)) n.innerHTML = ''; }, ms);
+}
+function mapRow(r){
+  return {id:r.id, kind:r.kind, subject:r.subject, chapter:r.chapter, sub:r.sub || '', imp:r.imp, text:r.text || '', answer:r.answer || '', files:Array.isArray(r.files) ? r.files : [], reviewed:!!r.reviewed, createdAt:Date.parse(r.created_at) || Date.now()};
+}
+async function signUrls(items){
+  const now = Date.now();
+  const need = [...new Set(items.flatMap(i => (i.files || []).map(f => f.path)))].filter(p => !(URLS.get(p) && URLS.get(p).exp > now + 600000));
+  for (let i = 0; i < need.length; i += 100) {
+    const {data, error} = await sb.storage.from(BUCKET).createSignedUrls(need.slice(i, i + 100), 21600);
+    if (error) throw error;
+    (data || []).forEach(d => { if (d.signedUrl) URLS.set(d.path, {url:d.signedUrl, exp:now + 21600000}); });
+  }
+}
+async function loadAll(){
+  const rows = [];
+  for (let from = 0; ; from += 1000) {
+    const {data, error} = await sb.from('items').select('*').order('created_at', {ascending:false}).range(from, from + 999);
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < 1000) break;
+  }
+  S.items = rows.map(mapRow);
+  const m = await sb.from('user_meta').select('chapters,subs').maybeSingle();
+  if (m.error) throw m.error;
+  S.custom = {chapters:m.data?.chapters || [], subs:m.data?.subs || []};
+  try { await signUrls(S.items); } catch(e){ note('نمایش فایل‌ها انجام نشد. صفحه رو دوباره باز کن.'); }
+  S.loaded = true; render();
+}
+async function removeItem(it){
+  const {error} = await sb.from('items').delete().eq('id', it.id);
+  if (error) throw error;
+  S.items = S.items.filter(x => x.id !== it.id); render();
+  const paths = (it.files || []).map(f => f.path);
+  if (paths.length) { try { await sb.storage.from(BUCKET).remove(paths); } catch(e){} }
+}
+async function saveCustom(){
+  const {error} = await sb.from('user_meta').upsert({user_id:uid, chapters:S.custom.chapters, subs:S.custom.subs}, {onConflict:'user_id'});
+  if (error) throw error;
+}
+
+/* ---------- list ---------- */
+function matches(it){
+  const f = S.f;
+  if (it.kind !== S.tab) return false;
+  if (f.subject && it.subject !== f.subject) return false;
+  if (f.chapter && it.chapter !== f.chapter) return false;
+  if (f.imp.length && !f.imp.includes(it.imp)) return false;
+  const files = it.files || [];
+  if (f.att === 'any' && !files.length) return false;
+  if (f.att === 'none' && files.length) return false;
+  if (f.att === 'img' && !files.some(x => x.type.startsWith('image/'))) return false;
+  if (f.att === 'pdf' && !files.some(x => x.type === 'application/pdf')) return false;
+  if (f.rev === 'yes' && !it.reviewed) return false;
+  if (f.rev === 'no' && it.reviewed) return false;
+  const q = norm(S.q);
+  if (q) {
+    const hay = norm([it.text, it.answer, SUBJ[it.subject]?.name, it.chapter, it.sub, ...files.map(x => x.name)].join(' '));
+    if (!q.split(/\s+/).every(t => hay.includes(t))) return false;
+  }
+  return true;
+}
+function cardHtml(it){
+  const files = it.files || [];
+  const imgs = files.filter(x => x.type.startsWith('image/'));
+  const pdfs = files.filter(x => x.type === 'application/pdf');
+  const crumb = `<span><b>${esc(SUBJ[it.subject]?.name || 'درس نامشخص')}</b></span><span class="sep">›</span><span>${esc(it.chapter)}</span>` + (it.sub ? `<span class="sep">›</span><span>${esc(it.sub)}</span>` : '');
+  return `<article class="card${it.reviewed ? ' done' : ''}" data-id="${esc(it.id)}">
+    <div class="cardhead"><div class="crumb">${crumb}</div>
+      <span class="imp v${it.imp}"><span class="meter"><i></i><i></i><i></i></span>${IMP[it.imp]}</span></div>
+    ${it.text ? `<div class="body">${esc(it.text)}</div>` : ''}
+    ${it.answer ? `<div class="ans"><b>پاسخ:</b> ${esc(it.answer)}</div>` : ''}
+    ${(imgs.length || pdfs.length) ? `<div class="thumbs">` +
+      imgs.map(x => `<img class="thumb" data-act="zoom" data-src="${esc(urlOf(x.path))}" src="${esc(urlOf(x.path))}" alt="${esc(x.name)}" loading="lazy">`).join('') +
+      pdfs.map(x => `<a class="pdf" data-act="pdf" href="${esc(urlOf(x.path))}" target="_blank" rel="noopener"><em>PDF</em><span>${esc(x.name)}</span></a>`).join('') + `</div>` : ''}
+    <div class="cardfoot"><span>${dateFa(it.createdAt)}</span>
+      <button class="rev" data-act="rev" aria-pressed="${it.reviewed ? 'true' : 'false'}">${it.reviewed ? 'مرور شد ✓' : 'مرور شد؟'}</button></div>
+  </article>`;
+}
+function activeFilterCount(){
+  const f = S.f; return (f.subject?1:0) + (f.chapter?1:0) + (f.imp.length?1:0) + (f.att?1:0) + (f.rev?1:0) + (f.sort!=='new'?1:0);
+}
+function render(){
+  const notes = S.items.filter(i => i.kind === 'note').length, qs = S.items.filter(i => i.kind === 'q').length;
+  $('cnt-note').textContent = fa(notes); $('cnt-q').textContent = fa(qs);
+  $('stats').textContent = (notes + qs) ? `${fa(notes + qs)} مورد ثبت‌شده` : '';
+  const n = activeFilterCount(); const b = $('fbadge'); b.hidden = !n; b.textContent = fa(n);
+  const list = $('list');
+  if (!S.loaded) { list.innerHTML = `<div class="empty"><strong>در حال بارگذاری…</strong></div>`; return; }
+  let arr = S.items.filter(matches);
+  const sort = S.f.sort;
+  arr.sort((a, b) => sort === 'old' ? a.createdAt - b.createdAt : sort === 'imp' ? (b.imp - a.imp) || (b.createdAt - a.createdAt) : b.createdAt - a.createdAt);
+  if (!arr.length) {
+    const total = S.items.filter(i => i.kind === S.tab).length;
+    const kind = S.tab === 'note' ? 'نکته' : 'سوال';
+    list.innerHTML = total
+      ? `<div class="empty"><strong>چیزی پیدا نشد</strong><span>جستجو یا فیلترها رو کم‌تر کن.</span></div>`
+      : `<div class="empty"><strong>هنوز ${kind}ای ثبت نکردی</strong><span>با دکمه «ثبت» پایین صفحه، اولین ${kind} رو با درس و مبحثش اضافه کن.</span></div>`;
+    return;
+  }
+  list.innerHTML = arr.map(cardHtml).join('');
+}
+
+/* ---------- filters ---------- */
+function bindFilters(){
+  subjectOptions($('fl-subject'), 'همه درس‌ها');
+  fillSelect($('fl-chapter'), [], 'همه مبحث‌ها', '');
+  $('btn-filter').onclick = () => { const h = $('filters').hidden; $('filters').hidden = !h; $('btn-filter').setAttribute('aria-expanded', String(h)); };
+  $('q').addEventListener('input', e => { S.q = e.target.value; render(); });
+  $('fl-subject').onchange = e => {
+    S.f.subject = e.target.value; S.f.chapter = '';
+    fillSelect($('fl-chapter'), chaptersOf(S.f.subject), 'همه مبحث‌ها', '');
+    $('fl-chapter').disabled = !S.f.subject; render();
+  };
+  $('fl-chapter').onchange = e => { S.f.chapter = e.target.value; render(); };
+  $('fl-att').onchange = e => { S.f.att = e.target.value; render(); };
+  $('fl-rev').onchange = e => { S.f.rev = e.target.value; render(); };
+  $('fl-sort').onchange = e => { S.f.sort = e.target.value; render(); };
+  $('fl-imp').addEventListener('click', e => {
+    const b = e.target.closest('button[data-v]'); if (!b) return;
+    const v = Number(b.dataset.v); const on = S.f.imp.includes(v);
+    S.f.imp = on ? S.f.imp.filter(x => x !== v) : [...S.f.imp, v];
+    b.setAttribute('aria-pressed', String(!on)); render();
+  });
+  $('fl-clear').onclick = () => {
+    S.f = {subject:'',chapter:'',imp:[],att:'',rev:'',sort:'new'}; S.q = ''; $('q').value = '';
+    $('fl-subject').value = ''; fillSelect($('fl-chapter'), [], 'همه مبحث‌ها', ''); $('fl-chapter').disabled = true;
+    $('fl-att').value = ''; $('fl-rev').value = ''; $('fl-sort').value = 'new';
+    $('fl-imp').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', 'false')); render();
+  };
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+    S.tab = t.dataset.tab;
+    document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x === t))); render();
+  });
+}
+
+/* ---------- list interactions ---------- */
+function bindList(){
+  $('list').addEventListener('click', async e => {
+    const card = e.target.closest('.card'); if (!card) return;
+    const it = S.items.find(x => x.id === card.dataset.id); if (!it) return;
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'pdf') return;
+    if (act === 'zoom') { const lb = $('lightbox'); lb.querySelector('img').src = e.target.dataset.src; lb.hidden = false; return; }
+    if (act === 'rev') {
+      const val = !it.reviewed;
+      it.reviewed = val; render();
+      const r = await sb.from('items').update({reviewed: val}).eq('id', it.id);
+      if (r.error) { it.reviewed = !val; render(); note('تغییر ذخیره نشد. اتصال رو چک کن.', 4000); }
+      return;
+    }
+    openSheet(it);
+  });
+  $('lightbox').onclick = () => { $('lightbox').hidden = true; };
+}
+
+/* ---------- sheet (add / edit) ---------- */
+function setKind(k){
+  F.kind = k;
+  $('f-k-note').setAttribute('aria-checked', String(k === 'note'));
+  $('f-k-q').setAttribute('aria-checked', String(k === 'q'));
+  $('f-text-lbl').textContent = k === 'q' ? 'متن سوال' : 'متن نکته';
+  $('f-ans-wrap').hidden = k !== 'q';
+}
+function setImp(v){
+  F.imp = v;
+  $('f-imp').querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', String(Number(b.dataset.v) === v)));
+}
+function syncPickers(){
+  $('f-subject').value = F.subject || '';
+  const hasS = !!F.subject;
+  fillSelect($('f-chapter'), hasS ? chaptersOf(F.subject) : [], hasS ? 'انتخاب مبحث…' : 'اول درس رو انتخاب کن', F.chapter);
+  $('f-chapter').disabled = !hasS; $('f-add-ch').disabled = !hasS;
+  const hasC = hasS && !!F.chapter;
+  fillSelect($('f-sub'), hasC ? subsOf(F.subject, F.chapter) : [], hasC ? 'بدون زیرمبحث' : 'اول مبحث رو انتخاب کن', F.sub);
+  $('f-sub').disabled = !hasC; $('f-add-sub').disabled = !hasC;
+}
+function renderFiles(){
+  const box = $('f-files'); const rows = [];
+  F.files.filter(f => !F.removed.includes(f.path)).forEach(f => rows.push({key:'e:' + f.path, f, existing:true}));
+  F.pending.forEach((p, i) => rows.push({key:'p:' + i, f:p, existing:false}));
+  box.innerHTML = rows.map(r => {
+    const isImg = r.f.type.startsWith('image/');
+    const src = r.existing ? urlOf(r.f.path) : r.f.url;
+    const thumb = isImg ? `<img src="${esc(src)}" alt="">` : `<div class="pdfico">PDF</div>`;
+    return `<div class="fitem">${thumb}<div class="nm">${esc(r.f.name)}</div><button type="button" class="x" data-key="${esc(r.key)}" aria-label="حذف فایل">×</button></div>`;
+  }).join('');
+}
+function openSheet(it){
+  F = it
+    ? {id:it.id, kind:it.kind, subject:it.subject, chapter:it.chapter, sub:it.sub || '', imp:it.imp, files:[...(it.files || [])], pending:[], removed:[], reviewed:!!it.reviewed, createdAt:it.createdAt}
+    : {id:null, kind:S.tab, subject:S.f.subject || '', chapter:S.f.chapter || '', sub:'', imp:2, files:[], pending:[], removed:[], reviewed:false, createdAt:0};
+  $('sheet-title').textContent = it ? 'ویرایش' : 'ثبت مورد جدید';
+  $('f-text').value = it?.text || ''; $('f-ans').value = it?.answer || '';
+  $('f-err').textContent = ''; $('f-newch').hidden = true; $('f-newsub').hidden = true;
+  $('f-del').hidden = !it; $('f-del').textContent = 'حذف'; clearTimeout(delTimer);
+  $('f-save').disabled = false; $('f-save').textContent = 'ذخیره';
+  $('f-pick').hidden = false;
+  setKind(F.kind); setImp(F.imp); syncPickers(); renderFiles();
+  $('back').hidden = false;
+}
+function closeSheet(){
+  F && F.pending.forEach(p => p.url && URL.revokeObjectURL(p.url));
+  F = null; $('back').hidden = true;
+}
+async function shrink(file){
+  let bmp;
+  try { bmp = await createImageBitmap(file); }
+  catch(e){
+    bmp = await new Promise((res, rej) => { const im = new Image(); const u = URL.createObjectURL(file); im.onload = () => { res(im); }; im.onerror = () => rej({code:'decode'}); im.src = u; });
+  }
+  const w = bmp.width || bmp.naturalWidth, h = bmp.height || bmp.naturalHeight;
+  const sc = Math.min(1, 1800 / Math.max(w, h));
+  const c = document.createElement('canvas'); c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.86));
+  if (!blob) throw {code:'decode'};
+  return blob;
+}
+function bindSheet(){
+  subjectOptions($('f-subject'), 'انتخاب درس…');
+  $('fab').onclick = () => openSheet(null);
+  $('f-close').onclick = closeSheet;
+  $('back').addEventListener('click', e => { if (e.target === $('back')) closeSheet(); });
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!$('lightbox').hidden) $('lightbox').hidden = true; else if (F) closeSheet();
+  });
+  $('f-k-note').onclick = () => setKind('note'); $('f-k-q').onclick = () => setKind('q');
+  $('f-imp').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b) setImp(Number(b.dataset.v)); });
+  $('f-subject').onchange = e => { F.subject = e.target.value; F.chapter = ''; F.sub = ''; syncPickers(); };
+  $('f-chapter').onchange = e => { F.chapter = e.target.value; F.sub = ''; syncPickers(); };
+  $('f-sub').onchange = e => { F.sub = e.target.value; };
+  $('f-add-ch').onclick = () => { $('f-newch').hidden = false; $('f-newch-in').focus(); };
+  $('f-add-sub').onclick = () => { $('f-newsub').hidden = false; $('f-newsub-in').focus(); };
+  $('f-newch-ok').onclick = async () => {
+    const n = $('f-newch-in').value.trim(); if (!n || !F.subject) return;
+    if (!chaptersOf(F.subject).includes(n)) { S.custom.chapters.push({s:F.subject, n}); try { await saveCustom(); } catch(e){} }
+    F.chapter = n; F.sub = ''; $('f-newch-in').value = ''; $('f-newch').hidden = true; syncPickers();
+  };
+  $('f-newsub-ok').onclick = async () => {
+    const n = $('f-newsub-in').value.trim(); if (!n || !F.subject || !F.chapter) return;
+    if (!subsOf(F.subject, F.chapter).includes(n)) { S.custom.subs.push({s:F.subject, c:F.chapter, n}); try { await saveCustom(); } catch(e){} }
+    F.sub = n; $('f-newsub-in').value = ''; $('f-newsub').hidden = true; syncPickers();
+  };
+  $('f-pick').onclick = () => $('f-file').click();
+  $('f-file').onchange = e => {
+    const bad = [];
+    [...e.target.files].forEach(file => {
+      const ok = file.type === 'application/pdf' || file.type.startsWith('image/');
+      if (!ok) { bad.push(file.name); return; }
+      if (file.size > 20 * 1024 * 1024) { bad.push(file.name); return; }
+      F.pending.push({file, name:file.name, type:file.type, url:file.type.startsWith('image/') ? URL.createObjectURL(file) : null});
+    });
+    e.target.value = '';
+    $('f-err').textContent = bad.length ? 'این فایل‌ها قابل افزودن نبودن (فقط عکس یا PDF تا ۲۰ مگابایت): ' + bad.join('، ') : '';
+    renderFiles();
+  };
+  $('f-files').addEventListener('click', e => {
+    const b = e.target.closest('button[data-key]'); if (!b) return;
+    const [t, k] = [b.dataset.key.slice(0, 1), b.dataset.key.slice(2)];
+    if (t === 'e') F.removed.push(k);
+    else { const p = F.pending[Number(k)]; if (p?.url) URL.revokeObjectURL(p.url); F.pending.splice(Number(k), 1); }
+    renderFiles();
+  });
+  $('f-del').onclick = async () => {
+    if (!F?.id) return;
+    const btn = $('f-del');
+    if (btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1'; btn.textContent = 'مطمئنی؟ دوباره بزن';
+      delTimer = setTimeout(() => { btn.dataset.armed = ''; btn.textContent = 'حذف'; }, 4000); return;
+    }
+    btn.dataset.armed = ''; btn.disabled = true;
+    const it = S.items.find(x => x.id === F.id);
+    try { if (it) await removeItem(it); closeSheet(); }
+    catch(e){ $('f-err').textContent = 'حذف انجام نشد. دوباره امتحان کن.'; }
+    btn.disabled = false;
+  };
+  $('form').addEventListener('submit', async e => { e.preventDefault(); await save(); });
+}
+const EXT = {'image/jpeg':'jpg', 'image/gif':'gif', 'application/pdf':'pdf'};
+async function save(){
+  const err = m => { $('f-err').textContent = m; };
+  err('');
+  const text = $('f-text').value.trim(), answer = $('f-ans').value.trim();
+  if (!F.subject) return err('اول درس رو انتخاب کن.');
+  if (!F.chapter) return err('مبحث رو هم انتخاب کن.');
+  if (!text && !answer && !(F.files.length - F.removed.length + F.pending.length)) return err('حداقل یک متن، عکس یا PDF وارد کن.');
+  const btn = $('f-save'); btn.disabled = true; btn.textContent = 'در حال ذخیره…';
+  const uploaded = [];
+  try {
+    for (const p of F.pending) {
+      let blob = p.file;
+      if (p.type.startsWith('image/') && p.type !== 'image/gif') blob = await shrink(p.file);
+      const path = `${uid}/${crypto.randomUUID()}.${EXT[blob.type] || 'bin'}`;
+      const up = await sb.storage.from(BUCKET).upload(path, blob, {contentType:blob.type});
+      if (up.error) throw {code:'upload'};
+      uploaded.push({path, name:p.name, type:blob.type});
+    }
+    const files = [...F.files.filter(f => !F.removed.includes(f.path)), ...uploaded];
+    const row = {kind:F.kind, subject:F.subject, chapter:F.chapter, sub:F.sub || '', imp:F.imp, text, answer:F.kind === 'q' ? answer : '', files, reviewed:F.reviewed, updated_at:new Date().toISOString()};
+    const res = F.id
+      ? await sb.from('items').update(row).eq('id', F.id).select().single()
+      : await sb.from('items').insert(row).select().single();
+    if (res.error) throw {code:'db'};
+    const it = mapRow(res.data), i = S.items.findIndex(x => x.id === it.id);
+    if (i >= 0) S.items[i] = it; else S.items.push(it);
+    try { await signUrls([it]); } catch(e){}
+    if (F.removed.length) { try { await sb.storage.from(BUCKET).remove(F.removed); } catch(e){} }
+    closeSheet(); render();
+  } catch(e) {
+    if (uploaded.length) { try { await sb.storage.from(BUCKET).remove(uploaded.map(u => u.path)); } catch(_){} }
+    const c = e && e.code;
+    err(c === 'decode' ? 'این عکس باز نشد. با فرمت JPEG یا PNG امتحان کن.'
+      : c === 'upload' ? 'آپلود فایل انجام نشد. اتصال رو چک کن و دوباره امتحان کن.'
+      : 'ذخیره نشد. اتصال رو چک کن و دوباره امتحان کن.');
+    btn.disabled = false; btn.textContent = 'ذخیره';
+  }
+}
+
+/* ---------- auth & boot ---------- */
+const CONFIGURED = SUPABASE_URL && SUPABASE_ANON_KEY && !/YOUR_/.test(SUPABASE_URL + SUPABASE_ANON_KEY) && window.supabase;
+function showAuth(){ $('auth').hidden = false; $('app').hidden = true; }
+async function startApp(user){
+  uid = user.id; $('auth').hidden = true; $('app').hidden = false;
+  S.loaded = false; S.items = []; render();
+  try { await loadAll(); }
+  catch(e){ S.loaded = true; note('خواندن اطلاعات انجام نشد. صفحه رو دوباره باز کن.'); render(); }
+}
+function stopApp(){
+  uid = null; S.items = []; S.loaded = false; URLS.clear();
+  if (F) closeSheet();
+  showAuth();
+}
+async function doAuth(mode){
+  const email = $('a-email').value.trim(), password = $('a-pass').value, err = $('a-err');
+  err.textContent = '';
+  if (!email || !password) { err.textContent = 'ایمیل و رمز عبور رو وارد کن.'; return; }
+  if (mode === 'up' && password.length < 6) { err.textContent = 'رمز عبور باید حداقل ۶ کاراکتر باشه.'; return; }
+  $('auth-in').disabled = $('auth-signup').disabled = true;
+  const {data, error} = mode === 'in' ? await sb.auth.signInWithPassword({email, password}) : await sb.auth.signUp({email, password});
+  $('auth-in').disabled = $('auth-signup').disabled = false;
+  if (error) {
+    const m = (error.message || '').toLowerCase();
+    err.textContent = m.includes('invalid login') ? 'ایمیل یا رمز عبور اشتباهه.'
+      : m.includes('already registered') ? 'این ایمیل قبلاً ثبت شده. وارد شو.'
+      : (m.includes('signups not allowed') || m.includes('signup is disabled') || m.includes('signups are disabled')) ? 'ساخت حساب جدید غیرفعاله.'
+      : m.includes('not confirmed') ? 'اول ایمیلت رو تأیید کن.'
+      : m.includes('rate') ? 'تعداد تلاش زیاده. کمی بعد دوباره امتحان کن.'
+      : 'انجام نشد. اتصال رو چک کن.';
+    return;
+  }
+  if (mode === 'up' && !data.session) err.textContent = 'ایمیل تأیید فرستاده شد. بعد از تأیید، وارد شو.';
+}
+bindFilters(); bindList(); bindSheet();
+$('auth-form').addEventListener('submit', e => { e.preventDefault(); doAuth('in'); });
+$('auth-signup').onclick = () => doAuth('up');
+$('btn-out').onclick = () => { if (sb) sb.auth.signOut(); };
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && uid && S.loaded) signUrls(S.items).then(render).catch(() => {});
+});
+if (!CONFIGURED) {
+  $('a-err').textContent = 'اتصال به Supabase تنظیم نشده. مقدار SUPABASE_URL و SUPABASE_ANON_KEY رو بالای اسکریپت index.html بنویس.';
+  $('auth-in').disabled = $('auth-signup').disabled = true;
+  showAuth();
+} else {
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  showAuth();
+  sb.auth.onAuthStateChange((event, session) => {
+    setTimeout(() => {
+      if (session && session.user) { if (uid !== session.user.id) startApp(session.user); }
+      else if (uid) stopApp();
+    }, 0);
+  });
+}
+</script>
+</body>
+</html>
