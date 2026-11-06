@@ -480,8 +480,12 @@ button.fact { text-align: right; background: transparent; cursor: pointer; font:
     $("count").innerHTML = total ? "<b>" + faNum(total) + "</b> نکته ذخیره شده" : "هنوز نکته‌ای ذخیره نشده";
   }
   var storeErr = "", pending = {}, loadTimer = null;
-  var inFrame = window.parent !== window;
+  var bridge = window.__konkorPt || null;
+  var inFrame = !bridge && window.parent !== window;
   function bridgeSave(key, items) {
+    if (bridge && typeof bridge.save === "function") {
+      return Promise.resolve(bridge.save(key, items)).then(function (ok) { return !!ok; }).catch(function () { return false; });
+    }
     return new Promise(function (res) {
       var id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       pending[id] = res;
@@ -529,6 +533,13 @@ button.fact { text-align: right; background: transparent; cursor: pointer; font:
     }
   }
   function startStore() {
+    if (bridge) {
+      refreshDots();
+      if (typeof bridge.onReady === "function") bridge.onReady(function (payload) {
+        onMsg({ origin: location.origin, source: window, data: { pt: "init", notes: (payload && payload.notes) || {}, error: payload && payload.error } });
+      });
+      return;
+    }
     if (!inFrame) { lsRead(); refreshDots(); return; }
     window.addEventListener("message", onMsg);
     refreshDots();
