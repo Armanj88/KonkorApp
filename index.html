@@ -4,7 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1B4F8C">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="کنکور">
+<meta name="description" content="نکات و سوالات کنکور با جدول تناوبی">
 <title>جمع‌بندی کنکور</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&family=Lalezar&display=swap">
@@ -52,7 +60,7 @@ body{
   background:var(--bg);color:var(--ink);
   font-family:var(--font-body);font-size:15px;line-height:1.75;
   direction:rtl;text-align:right;
-  padding-bottom:96px;
+  padding-bottom:calc(88px + env(safe-area-inset-bottom,0px));
 }
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
 .wrap{max-width:720px;margin:0 auto;padding-left:var(--gutter-l);padding-right:var(--gutter-r)}
@@ -122,9 +130,26 @@ main{padding-block:14px}
 .empty{text-align:center;color:var(--muted);padding:44px 12px;display:grid;gap:6px}
 .empty strong{color:var(--ink);font-size:16px}
 
-/* floating add button */
-.fab{position:fixed;z-index:20;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--accent-ink);border:0;border-radius:28px;min-height:52px;padding:0 22px;font-weight:700;box-shadow:0 6px 18px rgba(10,30,60,.28);display:flex;align-items:center;gap:8px}
+/* floating add button — sits above bottom nav */
+.fab{position:fixed;z-index:20;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(72px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--accent-ink);border:0;border-radius:28px;min-height:52px;padding:0 22px;font-weight:700;box-shadow:0 6px 18px rgba(10,30,60,.28);display:flex;align-items:center;gap:8px}
 .fab span{font-size:22px;line-height:1}
+
+/* bottom navigation */
+.bottomnav{
+  position:fixed;z-index:25;left:0;right:0;bottom:0;
+  background:var(--surface);border-top:1px solid var(--line);
+  padding:6px max(8px,env(safe-area-inset-left,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-right,0px));
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;
+}
+.bnav{
+  border:0;background:transparent;border-radius:12px;min-height:52px;padding:6px 4px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  color:var(--muted);font-weight:700;font-size:12px;line-height:1.2;
+}
+.bnav[aria-selected="true"]{color:var(--accent);background:var(--accent-soft)}
+.bnav .bn{font-size:11px;font-weight:500;background:var(--accent-soft);color:var(--accent);border-radius:20px;padding:0 6px;min-width:20px;text-align:center}
+.bnav[aria-selected="true"] .bn{background:var(--accent);color:var(--accent-ink)}
+.bnav .ico{font-size:18px;line-height:1;opacity:.9}
 
 /* sheet */
 .back{position:fixed;inset:0;z-index:50;background:rgba(8,16,24,.55);display:flex;align-items:flex-end;justify-content:center}
@@ -159,6 +184,41 @@ main{padding-block:14px}
 .authcard h1{margin:0;font-family:var(--font-display);font-weight:400;font-size:28px;line-height:1.3}
 .authcard p{margin:0;color:var(--muted);font-size:14px}
 .authcard input{direction:ltr;text-align:left}
+.xrow{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-bottom:1px solid var(--line);min-height:48px;cursor:pointer}
+.xrow:last-child{border-bottom:0}
+.xrow input{width:22px;height:22px;margin:3px 0 0;flex:none;accent-color:var(--accent)}
+.xrow .xt{min-width:0;display:grid;gap:2px}
+.xrow .xsn{overflow-wrap:anywhere;font-size:14px}
+.xlist{max-height:36dvh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.xbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.xbar span{flex:1;min-width:120px;color:var(--muted);font-size:13px}
+.hint{margin:0;color:var(--muted);font-size:12.5px}
+#print{display:none}
+@media print{
+  @page{size:A4;margin:14mm 14mm 16mm}
+  html,body{background:#fff!important;color:#111!important;padding:0!important;margin:0!important}
+  body::before{display:none!important}
+  #app,#auth,#xback,#back,#lightbox,.fab,.bottomnav{display:none!important}
+  #print{display:block;direction:rtl;text-align:right;font-family:var(--font-body);font-size:12.5pt;line-height:1.9;color:#111}
+  #print .ph{display:flex;justify-content:space-between;align-items:baseline;gap:12pt;border-bottom:2pt solid #1B4F8C;padding-bottom:6pt;margin-bottom:10pt}
+  #print .ph h1{margin:0;font-family:var(--font-display);font-weight:400;font-size:24pt;line-height:1.4}
+  #print .ph div{font-size:10pt;color:#555;white-space:nowrap}
+  #print h2{margin:16pt 0 4pt;font-size:16pt;line-height:1.5;color:#1B4F8C;break-after:avoid}
+  #print h3{margin:12pt 0 2pt;font-size:13.5pt;line-height:1.5;color:#333;break-after:avoid}
+  #print .pi{padding:7pt 0;border-bottom:.6pt solid #ccc;break-inside:avoid}
+  #print .pm{font-size:10pt;color:#555;display:flex;flex-wrap:wrap;gap:2pt 10pt}
+  #print .pm .pn{font-weight:700;color:#111}
+  #print .pimp.v3{color:#B3261E}#print .pimp.v2{color:#9A6700}#print .pimp.v1{color:#3B6AA0}
+  #print .pt,#print .pa{white-space:pre-wrap;overflow-wrap:anywhere}
+  #print .pa{margin-top:4pt;padding-inline-start:8pt;border-inline-start:2pt solid #1B4F8C;color:#222}
+  #print .pimgs img{display:block;max-width:100%;max-height:95mm;object-fit:contain;margin:6pt 0}
+  #print .pf{font-size:10.5pt;color:#555}
+}
+
+#pt-wrap iframe{display:block;width:100%;border:0;background:var(--bg)}
+#app[data-view="pt"] .rv,#app[data-view="pt"] main{display:none!important}
+#app[data-view="pt"] .top{padding-bottom:0;border-bottom:0}
+#app[data-view="pt"] .fab{display:none!important}
 </style>
 </head>
 <body>
@@ -179,15 +239,12 @@ main{padding-block:14px}
         <h1>جمع‌بندی کنکور</h1>
         <div style="display:flex;align-items:center;gap:10px"><div class="stats" id="stats"></div><button class="btn" id="btn-out" type="button" style="min-height:36px;padding:2px 12px;font-size:13px">خروج</button></div>
       </div>
-      <div class="tabs" role="tablist" aria-label="بخش‌ها">
-        <button class="tab" id="tab-note" role="tab" aria-selected="true" data-tab="note">نکات <span class="n" id="cnt-note">۰</span></button>
-        <button class="tab" id="tab-q" role="tab" aria-selected="false" data-tab="q">سوالات <span class="n" id="cnt-q">۰</span></button>
-      </div>
-      <div class="searchrow">
+      <div class="searchrow rv">
         <input id="q" type="search" placeholder="جستجو در متن، درس و مبحث…" autocomplete="off">
+        <button class="btn" id="btn-export" type="button">خروجی PDF</button>
         <button class="btn" id="btn-filter" aria-expanded="false" aria-controls="filters">فیلتر<span class="badge" id="fbadge" hidden></span></button>
       </div>
-      <div class="filters" id="filters" hidden>
+      <div class="filters rv" id="filters" hidden>
         <div class="fgrid">
           <div class="field"><label for="fl-subject">درس</label><select id="fl-subject"></select></div>
           <div class="field"><label for="fl-chapter">مبحث</label><select id="fl-chapter" disabled></select></div>
@@ -216,10 +273,24 @@ main{padding-block:14px}
 
   <main class="wrap">
     <div id="notice"></div>
-    <div class="list" id="list"></div>
+    <div class="list rv" id="list"></div>
   </main>
 
-  <button class="fab" id="fab" aria-label="ثبت مورد جدید"><span>+</span>ثبت</button>
+  <div id="pt-wrap" hidden><iframe id="pt-frame" title="جدول تناوبی"></iframe></div>
+
+  <button class="fab rv" id="fab" aria-label="ثبت مورد جدید"><span>+</span>ثبت</button>
+
+  <nav class="bottomnav" id="bottomnav" role="tablist" aria-label="ناوبری اصلی">
+    <button type="button" class="bnav" role="tab" id="tab-note" data-tab="note" aria-selected="true">
+      <span class="ico">📝</span>نکات <span class="bn" id="cnt-note">۰</span>
+    </button>
+    <button type="button" class="bnav" role="tab" id="tab-q" data-tab="q" aria-selected="false">
+      <span class="ico">❓</span>سوالات <span class="bn" id="cnt-q">۰</span>
+    </button>
+    <button type="button" class="bnav" role="tab" id="tab-pt" data-view="pt" aria-selected="false">
+      <span class="ico">🧪</span>جدول تناوبی
+    </button>
+  </nav>
 
   <div class="back" id="back" hidden>
     <form class="sheet" id="form" role="dialog" aria-modal="true" aria-labelledby="sheet-title" novalidate>
@@ -257,11 +328,17 @@ main{padding-block:14px}
       <div class="field"><label for="f-text" id="f-text-lbl">متن نکته</label><textarea id="f-text" placeholder="متن رو تایپ یا پیست کن"></textarea></div>
       <div class="field" id="f-ans-wrap" hidden><label for="f-ans">پاسخ / راه‌حل (اختیاری)</label><textarea id="f-ans"></textarea></div>
 
-      <div class="field">
-        <span class="lbl">عکس یا PDF</span>
-        <div class="files" id="f-files"></div>
-        <input type="file" id="f-file" accept="image/*,application/pdf" multiple hidden>
-        <button type="button" class="btn" id="f-pick">افزودن عکس یا PDF</button>
+      <div class="field" id="f-files-q-wrap">
+        <span class="lbl" id="f-files-q-lbl">عکس یا PDF</span>
+        <div class="files" id="f-files-q"></div>
+        <input type="file" id="f-file-q" accept="image/*,application/pdf" multiple hidden>
+        <button type="button" class="btn" id="f-pick-q">افزودن عکس یا PDF</button>
+      </div>
+      <div class="field" id="f-files-ans-wrap" hidden>
+        <span class="lbl">فایل پاسخنامه (اختیاری)</span>
+        <div class="files" id="f-files-ans"></div>
+        <input type="file" id="f-file-ans" accept="image/*,application/pdf" multiple hidden>
+        <button type="button" class="btn" id="f-pick-ans">افزودن پاسخنامه</button>
       </div>
 
       <div class="err" id="f-err" role="alert"></div>
@@ -272,10 +349,32 @@ main{padding-block:14px}
     </form>
   </div>
 
+  <div class="back" id="xback" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="x-title">
+      <div class="sheethead"><h2 id="x-title">خروجی PDF</h2><button type="button" class="btn" id="x-close">بستن</button></div>
+      <div class="pick">
+        <h3>درس و مبحث رو انتخاب کن</h3>
+        <div class="field"><label for="x-subject">درس</label><select id="x-subject"></select></div>
+        <div class="field"><label for="x-chapter">مبحث</label><select id="x-chapter" disabled></select></div>
+        <p class="hint">با انتخاب درس، همه‌ی مورد‌های اون درس (یا مبحث) انتخاب می‌شن و می‌تونی بعدش هر کدوم رو برداری. اگه درس رو انتخاب نکنی، خودت از بین همه‌ی موارد تیک می‌زنی.</p>
+      </div>
+      <div class="field"><span class="lbl">شامل</span>
+        <div class="chips" id="x-kind"><button type="button" class="chip" data-k="note" aria-pressed="true">نکات</button><button type="button" class="chip" data-k="q" aria-pressed="false">سوالات</button><button type="button" class="chip" id="x-ans" aria-pressed="true">با پاسخ سوال‌ها</button></div></div>
+      <div class="field"><span class="lbl">سطح اهمیت</span>
+        <div class="chips" id="x-imp"><button type="button" class="chip i3" data-v="3" aria-pressed="true">زیاد</button><button type="button" class="chip i2" data-v="2" aria-pressed="true">متوسط</button><button type="button" class="chip i1" data-v="1" aria-pressed="true">کم</button></div></div>
+      <div class="field"><label for="x-q">جستجو بین موارد</label><input id="x-q" type="search" autocomplete="off" placeholder="بخشی از متن، مبحث یا زیرمبحث"></div>
+      <div class="xbar"><span id="x-count"></span><button type="button" class="linkbtn" id="x-all">انتخاب همه</button><button type="button" class="linkbtn" id="x-none">هیچ‌کدام</button></div>
+      <div class="xlist" id="x-list"></div>
+      <div class="err" id="x-err" role="alert"></div>
+      <div class="actions"><button type="button" class="btn primary" id="x-go">ساخت PDF</button></div>
+      <p class="hint">پنجره‌ی چاپ باز می‌شه. مقصد رو «ذخیره به‌صورت PDF» (Save as PDF) بذار. عکس‌ها توی PDF میان، ولی فایل‌های PDF پیوست فقط با اسم ذکر می‌شن.</p>
+    </div>
+  </div>
   <div class="lightbox" id="lightbox" hidden><img alt="عکس پیوست"></div>
 </div>
 
 
+<div id="print" aria-hidden="true"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 /* ---------- Supabase settings: fill these two values ---------- */
@@ -496,19 +595,26 @@ function matches(it){
   }
   return true;
 }
-function cardHtml(it){
-  const files = it.files || [];
+function thumbsHtml(files){
   const imgs = files.filter(x => x.type.startsWith('image/'));
   const pdfs = files.filter(x => x.type === 'application/pdf');
+  if (!imgs.length && !pdfs.length) return '';
+  return `<div class="thumbs">` +
+    imgs.map(x => `<img class="thumb" data-act="zoom" data-src="${esc(urlOf(x.path))}" src="${esc(urlOf(x.path))}" alt="${esc(x.name)}" loading="lazy">`).join('') +
+    pdfs.map(x => `<a class="pdf" data-act="pdf" href="${esc(urlOf(x.path))}" target="_blank" rel="noopener"><em>PDF</em><span>${esc(x.name)}</span></a>`).join('') +
+    `</div>`;
+}
+function cardHtml(it){
+  const files = it.files || [];
+  const qFiles = files.filter(x => x.role !== 'ans');
+  const aFiles = files.filter(x => x.role === 'ans');
   const crumb = `<span><b>${esc(SUBJ[it.subject]?.name || 'درس نامشخص')}</b></span><span class="sep">›</span><span>${esc(it.chapter)}</span>` + (it.sub ? `<span class="sep">›</span><span>${esc(it.sub)}</span>` : '');
   return `<article class="card${it.reviewed ? ' done' : ''}" data-id="${esc(it.id)}">
     <div class="cardhead"><div class="crumb">${crumb}</div>
       <span class="imp v${it.imp}"><span class="meter"><i></i><i></i><i></i></span>${IMP[it.imp]}</span></div>
     ${it.text ? `<div class="body">${esc(it.text)}</div>` : ''}
-    ${it.answer ? `<div class="ans"><b>پاسخ:</b> ${esc(it.answer)}</div>` : ''}
-    ${(imgs.length || pdfs.length) ? `<div class="thumbs">` +
-      imgs.map(x => `<img class="thumb" data-act="zoom" data-src="${esc(urlOf(x.path))}" src="${esc(urlOf(x.path))}" alt="${esc(x.name)}" loading="lazy">`).join('') +
-      pdfs.map(x => `<a class="pdf" data-act="pdf" href="${esc(urlOf(x.path))}" target="_blank" rel="noopener"><em>PDF</em><span>${esc(x.name)}</span></a>`).join('') + `</div>` : ''}
+    ${thumbsHtml(qFiles)}
+    ${it.answer || aFiles.length ? `<div class="ans">${it.answer ? `<b>پاسخ:</b> ${esc(it.answer)}` : '<b>پاسخنامه</b>'}${thumbsHtml(aFiles)}</div>` : ''}
     <div class="cardfoot"><span>${dateFa(it.createdAt)}</span>
       <button class="rev" data-act="rev" aria-pressed="${it.reviewed ? 'true' : 'false'}">${it.reviewed ? 'مرور شد ✓' : 'مرور شد؟'}</button></div>
   </article>`;
@@ -564,10 +670,15 @@ function bindFilters(){
     $('fl-att').value = ''; $('fl-rev').value = ''; $('fl-sort').value = 'new';
     $('fl-imp').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', 'false')); render();
   };
-  document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
-    S.tab = t.dataset.tab;
-    document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x === t))); render();
-  });
+  function selectTab(tab){
+    S.tab = tab;
+    document.querySelectorAll('#tab-note,#tab-q').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === tab)));
+    $('tab-pt').setAttribute('aria-selected', 'false');
+    showView('rv');
+    render();
+  }
+  $('tab-note').onclick = () => selectTab('note');
+  $('tab-q').onclick = () => selectTab('q');
 }
 
 /* ---------- list interactions ---------- */
@@ -597,6 +708,9 @@ function setKind(k){
   $('f-k-q').setAttribute('aria-checked', String(k === 'q'));
   $('f-text-lbl').textContent = k === 'q' ? 'متن سوال' : 'متن نکته';
   $('f-ans-wrap').hidden = k !== 'q';
+  $('f-files-ans-wrap').hidden = k !== 'q';
+  $('f-files-q-lbl').textContent = k === 'q' ? 'فایل سوال (عکس یا PDF)' : 'عکس یا PDF';
+  $('f-pick-q').textContent = k === 'q' ? 'افزودن فایل سوال' : 'افزودن عکس یا PDF';
 }
 function setImp(v){
   F.imp = v;
@@ -611,16 +725,21 @@ function syncPickers(){
   fillSelect($('f-sub'), hasC ? subsOf(F.subject, F.chapter) : [], hasC ? 'بدون زیرمبحث' : 'اول مبحث رو انتخاب کن', F.sub);
   $('f-sub').disabled = !hasC; $('f-add-sub').disabled = !hasC;
 }
+function fileRole(f){ return f.role === 'ans' ? 'ans' : 'q'; }
 function renderFiles(){
-  const box = $('f-files'); const rows = [];
-  F.files.filter(f => !F.removed.includes(f.path)).forEach(f => rows.push({key:'e:' + f.path, f, existing:true}));
-  F.pending.forEach((p, i) => rows.push({key:'p:' + i, f:p, existing:false}));
-  box.innerHTML = rows.map(r => {
-    const isImg = r.f.type.startsWith('image/');
-    const src = r.existing ? urlOf(r.f.path) : r.f.url;
-    const thumb = isImg ? `<img src="${esc(src)}" alt="">` : `<div class="pdfico">PDF</div>`;
-    return `<div class="fitem">${thumb}<div class="nm">${esc(r.f.name)}</div><button type="button" class="x" data-key="${esc(r.key)}" aria-label="حذف فایل">×</button></div>`;
-  }).join('');
+  function fill(boxId, role){
+    const box = $(boxId); const rows = [];
+    F.files.filter(f => !F.removed.includes(f.path) && fileRole(f) === role).forEach(f => rows.push({key:'e:' + f.path, f, existing:true}));
+    F.pending.forEach((p, i) => { if (fileRole(p) === role) rows.push({key:'p:' + i, f:p, existing:false}); });
+    box.innerHTML = rows.map(r => {
+      const isImg = r.f.type.startsWith('image/');
+      const src = r.existing ? urlOf(r.f.path) : r.f.url;
+      const thumb = isImg ? `<img src="${esc(src)}" alt="">` : `<div class="pdfico">PDF</div>`;
+      return `<div class="fitem">${thumb}<div class="nm">${esc(r.f.name)}</div><button type="button" class="x" data-key="${esc(r.key)}" aria-label="حذف فایل">×</button></div>`;
+    }).join('');
+  }
+  fill('f-files-q', 'q');
+  fill('f-files-ans', 'ans');
 }
 function openSheet(it){
   F = it
@@ -631,7 +750,7 @@ function openSheet(it){
   $('f-err').textContent = ''; $('f-newch').hidden = true; $('f-newsub').hidden = true;
   $('f-del').hidden = !it; $('f-del').textContent = 'حذف'; clearTimeout(delTimer);
   $('f-save').disabled = false; $('f-save').textContent = 'ذخیره';
-  $('f-pick').hidden = false;
+  $('f-pick-q').hidden = false; $('f-pick-ans').hidden = false;
   setKind(F.kind); setImp(F.imp); syncPickers(); renderFiles();
   $('back').hidden = false;
 }
@@ -679,26 +798,30 @@ function bindSheet(){
     if (!subsOf(F.subject, F.chapter).includes(n)) { S.custom.subs.push({s:F.subject, c:F.chapter, n}); try { await saveCustom(); } catch(e){} }
     F.sub = n; $('f-newsub-in').value = ''; $('f-newsub').hidden = true; syncPickers();
   };
-  $('f-pick').onclick = () => $('f-file').click();
-  $('f-file').onchange = e => {
+  function addPendingFiles(fileList, role){
     const bad = [];
-    [...e.target.files].forEach(file => {
+    [...fileList].forEach(file => {
       const ok = file.type === 'application/pdf' || file.type.startsWith('image/');
       if (!ok) { bad.push(file.name); return; }
       if (file.size > 20 * 1024 * 1024) { bad.push(file.name); return; }
-      F.pending.push({file, name:file.name, type:file.type, url:file.type.startsWith('image/') ? URL.createObjectURL(file) : null});
+      F.pending.push({file, name:file.name, type:file.type, role, url:file.type.startsWith('image/') ? URL.createObjectURL(file) : null});
     });
-    e.target.value = '';
     $('f-err').textContent = bad.length ? 'این فایل‌ها قابل افزودن نبودن (فقط عکس یا PDF تا ۲۰ مگابایت): ' + bad.join('، ') : '';
     renderFiles();
-  };
-  $('f-files').addEventListener('click', e => {
+  }
+  $('f-pick-q').onclick = () => $('f-file-q').click();
+  $('f-pick-ans').onclick = () => $('f-file-ans').click();
+  $('f-file-q').onchange = e => { addPendingFiles(e.target.files, 'q'); e.target.value = ''; };
+  $('f-file-ans').onchange = e => { addPendingFiles(e.target.files, 'ans'); e.target.value = ''; };
+  function onFileRemove(e){
     const b = e.target.closest('button[data-key]'); if (!b) return;
     const [t, k] = [b.dataset.key.slice(0, 1), b.dataset.key.slice(2)];
     if (t === 'e') F.removed.push(k);
     else { const p = F.pending[Number(k)]; if (p?.url) URL.revokeObjectURL(p.url); F.pending.splice(Number(k), 1); }
     renderFiles();
-  });
+  }
+  $('f-files-q').addEventListener('click', onFileRemove);
+  $('f-files-ans').addEventListener('click', onFileRemove);
   $('f-del').onclick = async () => {
     if (!F?.id) return;
     const btn = $('f-del');
@@ -731,7 +854,7 @@ async function save(){
       const path = `${uid}/${crypto.randomUUID()}.${EXT[blob.type] || 'bin'}`;
       const up = await sb.storage.from(BUCKET).upload(path, blob, {contentType:blob.type});
       if (up.error) throw {code:'upload'};
-      uploaded.push({path, name:p.name, type:blob.type});
+      uploaded.push({path, name:p.name, type:blob.type, role: p.role === 'ans' ? 'ans' : 'q'});
     }
     const files = [...F.files.filter(f => !F.removed.includes(f.path)), ...uploaded];
     const row = {kind:F.kind, subject:F.subject, chapter:F.chapter, sub:F.sub || '', imp:F.imp, text, answer:F.kind === 'q' ? answer : '', files, reviewed:F.reviewed, updated_at:new Date().toISOString()};
@@ -754,6 +877,190 @@ async function save(){
   }
 }
 
+/* ---------- PDF export ---------- */
+const X = {subject:'', chapter:'', kinds:['note'], imps:[1,2,3], ans:true, q:'', sel:new Set()};
+const SORDER = Object.keys(SUBJ);
+const chIdx = it => { const i = chaptersOf(it.subject).indexOf(it.chapter); return i < 0 ? 999 : i; };
+const subIdx = it => it.sub ? 1 + Math.max(0, subsOf(it.subject, it.chapter).indexOf(it.sub)) : 0;
+function xBase(){
+  return S.items.filter(it => X.kinds.includes(it.kind) && (!X.subject || it.subject === X.subject) && (!X.chapter || it.chapter === X.chapter) && X.imps.includes(it.imp));
+}
+function xSort(arr){
+  return arr.slice().sort((a, b) => (SORDER.indexOf(a.subject) - SORDER.indexOf(b.subject)) || (chIdx(a) - chIdx(b)) || (subIdx(a) - subIdx(b)) || (a.kind === b.kind ? 0 : a.kind === 'note' ? -1 : 1) || (a.createdAt - b.createdAt));
+}
+function xVisible(){
+  const terms = norm(X.q).split(/\s+/).filter(Boolean);
+  return xSort(xBase()).filter(it => {
+    if (!terms.length) return true;
+    const hay = norm([it.text, it.answer, it.sub, it.chapter, SUBJ[it.subject]?.name].join(' '));
+    return terms.every(t => hay.includes(t));
+  });
+}
+function xCount(){
+  const base = xBase(); const n = base.filter(i => X.sel.has(i.id)).length;
+  $('x-count').textContent = base.length ? `${fa(n)} مورد انتخاب‌شده از ${fa(base.length)}` : '';
+}
+function xRender(){
+  const arr = xVisible();
+  if (!arr.length) {
+    $('x-list').innerHTML = `<div class="empty"><strong>${S.items.length ? 'موردی پیدا نشد' : 'هنوز چیزی ثبت نکردی'}</strong><span>${S.items.length ? 'درس، مبحث، نوع یا جستجو رو عوض کن.' : ''}</span></div>`;
+  } else {
+    $('x-list').innerHTML = arr.map(it => {
+      const crumb = [X.subject ? '' : SUBJ[it.subject]?.name, X.chapter ? '' : it.chapter, it.sub].filter(Boolean).join(' › ');
+      const snip = (it.text || it.answer || '').replace(/\s+/g, ' ').slice(0, 90) || 'فقط فایل پیوست';
+      const nf = (it.files || []).length;
+      return `<label class="xrow"><input type="checkbox" data-id="${esc(it.id)}"${X.sel.has(it.id) ? ' checked' : ''}>
+        <div class="xt"><div class="crumb">${esc(crumb)}${crumb ? ' · ' : ''}${it.kind === 'q' ? 'سوال' : 'نکته'} · اهمیت ${IMP[it.imp]}${nf ? ' · ' + fa(nf) + ' فایل' : ''}</div><div class="xsn">${esc(snip)}</div></div></label>`;
+    }).join('');
+  }
+  xCount();
+}
+function xReset(){ X.sel = new Set(X.subject ? xBase().map(i => i.id) : []); xRender(); }
+function xTitle(){
+  const k = X.kinds.length === 2 ? 'نکات و سوالات' : X.kinds[0] === 'q' ? 'سوالات' : 'نکات';
+  return [k, X.subject ? SUBJ[X.subject].name : '', X.chapter].filter(Boolean).join(' - ');
+}
+function buildPrint(items){
+  let h = `<header class="ph"><h1>${esc(xTitle())}</h1><div>${fa(items.length)} مورد، ${esc(dateFa(Date.now()))}</div></header>`;
+  let ps = null, pc = null, n = 0;
+  for (const it of items) {
+    if (!X.subject && it.subject !== ps) { h += `<h2>${esc(SUBJ[it.subject]?.name || '')}</h2>`; ps = it.subject; pc = null; }
+    if (!X.chapter && it.chapter !== pc) { h += X.subject ? `<h2>${esc(it.chapter)}</h2>` : `<h3>${esc(it.chapter)}</h3>`; pc = it.chapter; }
+    const files = it.files || [];
+    const qFiles = files.filter(f => f.role !== 'ans');
+    const aFiles = files.filter(f => f.role === 'ans');
+    const imgs = qFiles.filter(f => f.type.startsWith('image/') && urlOf(f.path));
+    const pdfs = qFiles.filter(f => f.type === 'application/pdf');
+    const aImgs = aFiles.filter(f => f.type.startsWith('image/') && urlOf(f.path));
+    const aPdfs = aFiles.filter(f => f.type === 'application/pdf');
+    h += `<section class="pi"><div class="pm"><span class="pn">${fa(++n)}</span>${it.sub ? `<span>${esc(it.sub)}</span>` : ''}<span>${it.kind === 'q' ? 'سوال' : 'نکته'}</span><span class="pimp v${it.imp}">اهمیت ${IMP[it.imp]}</span></div>`
+      + (it.text ? `<div class="pt">${esc(it.text)}</div>` : '')
+      + (imgs.length ? `<div class="pimgs">${imgs.map(f => `<img src="${esc(urlOf(f.path))}" alt="">`).join('')}</div>` : '')
+      + (pdfs.length ? `<div class="pf">پیوست PDF سوال: ${pdfs.map(f => esc(f.name)).join('، ')}</div>` : '')
+      + (it.kind === 'q' && X.ans && (it.answer || aFiles.length) ? `<div class="pa"><b>پاسخ:</b> ${it.answer ? esc(it.answer) : ''}` + (aImgs.length ? `<div class="pimgs">${aImgs.map(f => `<img src="${esc(urlOf(f.path))}" alt="">`).join('')}</div>` : '') + (aPdfs.length ? `<div class="pf">پیوست PDF پاسخنامه: ${aPdfs.map(f => esc(f.name)).join('، ')}</div>` : '') + `</div>` : '')
+      + `</section>`;
+  }
+  return h;
+}
+function openExport(){
+  X.subject = S.f.subject || ''; X.chapter = S.f.chapter || ''; X.kinds = [S.tab]; X.imps = [1, 2, 3]; X.ans = true; X.q = '';
+  $('x-q').value = ''; $('x-subject').value = X.subject;
+  fillSelect($('x-chapter'), X.subject ? chaptersOf(X.subject) : [], 'همه مبحث‌ها', X.chapter);
+  $('x-chapter').disabled = !X.subject;
+  $('x-kind').querySelectorAll('[data-k]').forEach(b => b.setAttribute('aria-pressed', String(X.kinds.includes(b.dataset.k))));
+  $('x-ans').setAttribute('aria-pressed', 'true');
+  $('x-imp').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', 'true'));
+  $('x-err').textContent = ''; xReset(); $('xback').hidden = false;
+}
+function bindExport(){
+  subjectOptions($('x-subject'), 'همه درس‌ها (انتخاب دستی)');
+  $('btn-export').onclick = openExport;
+  $('x-close').onclick = () => { $('xback').hidden = true; };
+  $('xback').addEventListener('click', e => { if (e.target === $('xback')) $('xback').hidden = true; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('xback').hidden && $('lightbox').hidden) $('xback').hidden = true; });
+  $('x-subject').onchange = e => {
+    X.subject = e.target.value; X.chapter = '';
+    fillSelect($('x-chapter'), X.subject ? chaptersOf(X.subject) : [], 'همه مبحث‌ها', '');
+    $('x-chapter').disabled = !X.subject; xReset();
+  };
+  $('x-chapter').onchange = e => { X.chapter = e.target.value; xReset(); };
+  $('x-kind').addEventListener('click', e => {
+    const b = e.target.closest('[data-k]'); if (!b) return;
+    const k = b.dataset.k, on = X.kinds.includes(k);
+    if (on && X.kinds.length === 1) return;
+    X.kinds = on ? X.kinds.filter(x => x !== k) : [...X.kinds, k];
+    b.setAttribute('aria-pressed', String(!on)); xReset();
+  });
+  $('x-ans').onclick = () => { X.ans = !X.ans; $('x-ans').setAttribute('aria-pressed', String(X.ans)); };
+  $('x-imp').addEventListener('click', e => {
+    const b = e.target.closest('[data-v]'); if (!b) return;
+    const v = Number(b.dataset.v), on = X.imps.includes(v);
+    if (on && X.imps.length === 1) return;
+    X.imps = on ? X.imps.filter(x => x !== v) : [...X.imps, v];
+    b.setAttribute('aria-pressed', String(!on)); xReset();
+  });
+  $('x-q').addEventListener('input', e => { X.q = e.target.value; xRender(); });
+  $('x-list').addEventListener('change', e => {
+    const c = e.target.closest('input[data-id]'); if (!c) return;
+    if (c.checked) X.sel.add(c.dataset.id); else X.sel.delete(c.dataset.id);
+    xCount();
+  });
+  $('x-all').onclick = () => { xVisible().forEach(i => X.sel.add(i.id)); xRender(); };
+  $('x-none').onclick = () => { xVisible().forEach(i => X.sel.delete(i.id)); xRender(); };
+  $('x-go').onclick = async () => {
+    const items = xSort(xBase().filter(i => X.sel.has(i.id)));
+    if (!items.length) { $('x-err').textContent = 'حداقل یک مورد انتخاب کن.'; return; }
+    $('x-err').textContent = '';
+    const btn = $('x-go'); btn.disabled = true; btn.textContent = 'در حال آماده‌سازی…';
+    try { await signUrls(items); } catch(e){}
+    const root = $('print'); root.innerHTML = buildPrint(items);
+    try { await document.fonts.ready; } catch(e){}
+    await Promise.all([...root.querySelectorAll('img')].map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 8000); })));
+    document.title = xTitle();
+    btn.disabled = false; btn.textContent = 'ساخت PDF';
+    window.print();
+  };
+  window.addEventListener('afterprint', () => { document.title = 'جمع‌بندی کنکور'; });
+}
+
+/* ---------- periodic table tab ---------- */
+const PT = {notes:null, frameReady:false, error:''};
+const PT_KEY = /^(cat-[a-z]+|[0-9]{1,3})$/;
+function ptInit(){
+  const w = $('pt-frame').contentWindow;
+  if (w) w.postMessage({pt:'init', notes:PT.notes || {}, error:PT.error}, location.origin);
+}
+async function loadPt(){
+  PT.notes = {}; PT.error = '';
+  const {data, error} = await sb.from('ptable_notes').select('key,items');
+  if (error) { PT.error = 'missing'; }
+  else (data || []).forEach(r => { if (Array.isArray(r.items) && r.items.length) PT.notes[r.key] = r.items; });
+  if (PT.frameReady) ptInit();
+}
+function sizeFrame(){
+  const f = $('pt-frame'); const top = document.querySelector('.top');
+  const nav = document.querySelector('.bottomnav');
+  const navH = nav ? nav.getBoundingClientRect().height : 64;
+  f.style.height = Math.max(320, window.innerHeight - top.getBoundingClientRect().height - navH - 2) + 'px';
+}
+function showView(v){
+  $('app').dataset.view = v;
+  $('pt-wrap').hidden = v !== 'pt';
+  if (v === 'pt') {
+    $('tab-note').setAttribute('aria-selected', 'false');
+    $('tab-q').setAttribute('aria-selected', 'false');
+    $('tab-pt').setAttribute('aria-selected', 'true');
+    const f = $('pt-frame');
+    if (f.getAttribute('src') !== 'periodic.html') f.setAttribute('src', 'periodic.html');
+    sizeFrame();
+  } else {
+    $('tab-pt').setAttribute('aria-selected', 'false');
+    document.querySelectorAll('#tab-note,#tab-q').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === S.tab)));
+  }
+}
+function bindPt(){
+  $('tab-pt').onclick = () => showView('pt');
+  window.addEventListener('resize', () => { if (!$('pt-wrap').hidden) sizeFrame(); });
+  window.addEventListener('message', async e => {
+    if (e.origin !== location.origin || e.source !== $('pt-frame').contentWindow) return;
+    const m = e.data || {};
+    if (m.pt === 'ready') { PT.frameReady = true; if (PT.notes) ptInit(); return; }
+    if (m.pt !== 'save' || !uid) return;
+    let ok = false;
+    try {
+      const key = String(m.key), items = m.items;
+      if (PT_KEY.test(key) && Array.isArray(items) && JSON.stringify(items).length < 200000) {
+        const res = items.length
+          ? await sb.from('ptable_notes').upsert({user_id:uid, key, items, updated_at:new Date().toISOString()}, {onConflict:'user_id,key'})
+          : await sb.from('ptable_notes').delete().eq('user_id', uid).eq('key', key);
+        ok = !res.error;
+        if (ok) { if (items.length) PT.notes[key] = items; else delete PT.notes[key]; }
+      }
+    } catch(_){}
+    e.source.postMessage({pt:'saved', id:m.id, ok}, location.origin);
+  });
+}
+
 /* ---------- auth & boot ---------- */
 const CONFIGURED = SUPABASE_URL && SUPABASE_ANON_KEY && !/YOUR_/.test(SUPABASE_URL + SUPABASE_ANON_KEY) && window.supabase;
 function showAuth(){ $('auth').hidden = false; $('app').hidden = true; }
@@ -762,9 +1069,12 @@ async function startApp(user){
   S.loaded = false; S.items = []; render();
   try { await loadAll(); }
   catch(e){ S.loaded = true; note('خواندن اطلاعات انجام نشد. صفحه رو دوباره باز کن.'); render(); }
+  try { await loadPt(); } catch(e){ PT.notes = {}; PT.error = 'missing'; if (PT.frameReady) ptInit(); }
 }
 function stopApp(){
   uid = null; S.items = []; S.loaded = false; URLS.clear();
+  PT.notes = null; PT.frameReady = false; PT.error = '';
+  $('pt-frame').setAttribute('src', 'about:blank'); showView('rv');
   if (F) closeSheet();
   showAuth();
 }
@@ -788,7 +1098,14 @@ async function doAuth(mode){
   }
   if (mode === 'up' && !data.session) err.textContent = 'ایمیل تأیید فرستاده شد. بعد از تأیید، وارد شو.';
 }
-bindFilters(); bindList(); bindSheet();
+bindFilters(); bindList(); bindSheet(); bindExport(); bindPt();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
 $('auth-form').addEventListener('submit', e => { e.preventDefault(); doAuth('in'); });
 $('auth-signup').onclick = () => doAuth('up');
 $('btn-out').onclick = () => { if (sb) sb.auth.signOut(); };

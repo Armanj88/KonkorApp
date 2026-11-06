@@ -1,0 +1,27 @@
+{
+  "name": "جمع‌بندی کنکور",
+  "short_name": "کنکور",
+  "description": "نکات و سوالات کنکور با جدول تناوبی",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#EEF2F6",
+  "theme_color": "#1B4F8C",
+  "lang": "fa",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "icons/icon-192.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
