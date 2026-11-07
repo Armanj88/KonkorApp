@@ -124,6 +124,8 @@ main{padding-block:14px}
 .pdf{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:0 12px;min-height:44px;font-size:13px;text-decoration:none;color:var(--ink);max-width:100%}
 .pdf span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
 .pdf em{font-style:normal;font-weight:700;color:var(--danger);font-size:12px}
+.src{font-size:12.5px;color:var(--muted)}
+.src b{font-weight:700;color:var(--ink)}
 .cardfoot{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--muted);font-size:12.5px}
 .rev{border:1px solid var(--line);background:var(--surface-2);border-radius:20px;padding:3px 12px;min-height:36px;font-size:12.5px}
 .rev[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:700}
@@ -213,6 +215,7 @@ main{padding-block:14px}
   #print .pa{margin-top:4pt;padding-inline-start:8pt;border-inline-start:2pt solid #1B4F8C;color:#222}
   #print .pimgs img{display:block;max-width:100%;max-height:95mm;object-fit:contain;margin:6pt 0}
   #print .pf{font-size:10.5pt;color:#555}
+  #print .ps{font-size:10pt;color:#555;margin-top:3pt}
 }
 
 #pt-wrap iframe{display:block;width:100%;border:0;background:var(--bg)}
@@ -327,6 +330,7 @@ main{padding-block:14px}
 
       <div class="field"><label for="f-text" id="f-text-lbl">متن نکته</label><textarea id="f-text" placeholder="متن رو تایپ یا پیست کن"></textarea></div>
       <div class="field" id="f-ans-wrap" hidden><label for="f-ans">پاسخ / راه‌حل (اختیاری)</label><textarea id="f-ans"></textarea></div>
+      <div class="field"><label for="f-source">منبع (اختیاری)</label><input id="f-source" type="text" placeholder="مثلاً کتاب درسی، آزمون ۱۴۰۲، کلاس…" autocomplete="off"></div>
 
       <div class="field" id="f-files-q-wrap">
         <span class="lbl" id="f-files-q-lbl">عکس یا PDF</span>
@@ -536,7 +540,7 @@ function note(msg, ms){
   if (msg && ms) setTimeout(() => { if (n.textContent.includes(msg)) n.innerHTML = ''; }, ms);
 }
 function mapRow(r){
-  return {id:r.id, kind:r.kind, subject:r.subject, chapter:r.chapter, sub:r.sub || '', imp:r.imp, text:r.text || '', answer:r.answer || '', files:Array.isArray(r.files) ? r.files : [], reviewed:!!r.reviewed, createdAt:Date.parse(r.created_at) || Date.now()};
+  return {id:r.id, kind:r.kind, subject:r.subject, chapter:r.chapter, sub:r.sub || '', imp:r.imp, text:r.text || '', answer:r.answer || '', source:r.source || '', files:Array.isArray(r.files) ? r.files : [], reviewed:!!r.reviewed, createdAt:Date.parse(r.created_at) || Date.now()};
 }
 async function signUrls(items){
   const now = Date.now();
@@ -590,7 +594,7 @@ function matches(it){
   if (f.rev === 'no' && it.reviewed) return false;
   const q = norm(S.q);
   if (q) {
-    const hay = norm([it.text, it.answer, SUBJ[it.subject]?.name, it.chapter, it.sub, ...files.map(x => x.name)].join(' '));
+    const hay = norm([it.text, it.answer, it.source, SUBJ[it.subject]?.name, it.chapter, it.sub, ...files.map(x => x.name)].join(' '));
     if (!q.split(/\s+/).every(t => hay.includes(t))) return false;
   }
   return true;
@@ -615,6 +619,7 @@ function cardHtml(it){
     ${it.text ? `<div class="body">${esc(it.text)}</div>` : ''}
     ${thumbsHtml(qFiles)}
     ${it.answer || aFiles.length ? `<div class="ans">${it.answer ? `<b>پاسخ:</b> ${esc(it.answer)}` : '<b>پاسخنامه</b>'}${thumbsHtml(aFiles)}</div>` : ''}
+    ${it.source ? `<div class="src"><b>منبع:</b> ${esc(it.source)}</div>` : ''}
     <div class="cardfoot"><span>${dateFa(it.createdAt)}</span>
       <button class="rev" data-act="rev" aria-pressed="${it.reviewed ? 'true' : 'false'}">${it.reviewed ? 'مرور شد ✓' : 'مرور شد؟'}</button></div>
   </article>`;
@@ -747,7 +752,7 @@ function openSheet(it){
     ? {id:it.id, kind:it.kind, subject:it.subject, chapter:it.chapter, sub:it.sub || '', imp:it.imp, files:[...(it.files || [])], pending:[], removed:[], reviewed:!!it.reviewed, createdAt:it.createdAt}
     : {id:null, kind:S.tab, subject:S.f.subject || '', chapter:S.f.chapter || '', sub:'', imp:2, files:[], pending:[], removed:[], reviewed:false, createdAt:0};
   $('sheet-title').textContent = it ? 'ویرایش' : 'ثبت مورد جدید';
-  $('f-text').value = it?.text || ''; $('f-ans').value = it?.answer || '';
+  $('f-text').value = it?.text || ''; $('f-ans').value = it?.answer || ''; $('f-source').value = it?.source || '';
   $('f-err').textContent = ''; $('f-newch').hidden = true; $('f-newsub').hidden = true;
   $('f-del').hidden = !it; $('f-del').textContent = 'حذف'; clearTimeout(delTimer);
   $('f-save').disabled = false; $('f-save').textContent = 'ذخیره';
@@ -842,7 +847,7 @@ const EXT = {'image/jpeg':'jpg', 'image/gif':'gif', 'application/pdf':'pdf'};
 async function save(){
   const err = m => { $('f-err').textContent = m; };
   err('');
-  const text = $('f-text').value.trim(), answer = $('f-ans').value.trim();
+  const text = $('f-text').value.trim(), answer = $('f-ans').value.trim(), source = $('f-source').value.trim();
   if (!F.subject) return err('اول درس رو انتخاب کن.');
   if (!F.chapter) return err('مبحث رو هم انتخاب کن.');
   if (!text && !answer && !(F.files.length - F.removed.length + F.pending.length)) return err('حداقل یک متن، عکس یا PDF وارد کن.');
@@ -858,7 +863,7 @@ async function save(){
       uploaded.push({path, name:p.name, type:blob.type, role: p.role === 'ans' ? 'ans' : 'q'});
     }
     const files = [...F.files.filter(f => !F.removed.includes(f.path)), ...uploaded];
-    const row = {kind:F.kind, subject:F.subject, chapter:F.chapter, sub:F.sub || '', imp:F.imp, text, answer:F.kind === 'q' ? answer : '', files, reviewed:F.reviewed, updated_at:new Date().toISOString()};
+    const row = {kind:F.kind, subject:F.subject, chapter:F.chapter, sub:F.sub || '', imp:F.imp, text, answer:F.kind === 'q' ? answer : '', source, files, reviewed:F.reviewed, updated_at:new Date().toISOString()};
     const res = F.id
       ? await sb.from('items').update(row).eq('id', F.id).select().single()
       : await sb.from('items').insert(row).select().single();
@@ -893,7 +898,7 @@ function xVisible(){
   const terms = norm(X.q).split(/\s+/).filter(Boolean);
   return xSort(xBase()).filter(it => {
     if (!terms.length) return true;
-    const hay = norm([it.text, it.answer, it.sub, it.chapter, SUBJ[it.subject]?.name].join(' '));
+    const hay = norm([it.text, it.answer, it.source, it.sub, it.chapter, SUBJ[it.subject]?.name].join(' '));
     return terms.every(t => hay.includes(t));
   });
 }
@@ -936,6 +941,7 @@ function buildPrint(items){
     const aPdfs = aFiles.filter(f => f.type === 'application/pdf');
     h += `<section class="pi"><div class="pm"><span class="pn">${fa(++n)}</span>${it.sub ? `<span>${esc(it.sub)}</span>` : ''}<span>${it.kind === 'q' ? 'سوال' : 'نکته'}</span><span class="pimp v${it.imp}">اهمیت ${IMP[it.imp]}</span></div>`
       + (it.text ? `<div class="pt">${esc(it.text)}</div>` : '')
+      + (it.source ? `<div class="ps"><b>منبع:</b> ${esc(it.source)}</div>` : '')
       + (imgs.length ? `<div class="pimgs">${imgs.map(f => `<img src="${esc(urlOf(f.path))}" alt="">`).join('')}</div>` : '')
       + (pdfs.length ? `<div class="pf">پیوست PDF سوال: ${pdfs.map(f => esc(f.name)).join('، ')}</div>` : '')
       + (it.kind === 'q' && X.ans && (it.answer || aFiles.length) ? `<div class="pa"><b>پاسخ:</b> ${it.answer ? esc(it.answer) : ''}` + (aImgs.length ? `<div class="pimgs">${aImgs.map(f => `<img src="${esc(urlOf(f.path))}" alt="">`).join('')}</div>` : '') + (aPdfs.length ? `<div class="pf">پیوست PDF پاسخنامه: ${aPdfs.map(f => esc(f.name)).join('، ')}</div>` : '') + `</div>` : '')
