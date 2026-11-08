@@ -1,12 +1,15 @@
 /* Service worker for جمع‌بندی کنکور PWA */
-const CACHE = 'konkor-v2';
+const CACHE = 'konkor-v3';
 const PRECACHE = [
   './',
   './index.html',
   './periodic.html',
   './manifest.webmanifest',
   './icons/icon-192.svg',
-  './icons/icon-512.svg'
+  './icons/icon-512.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (event) => {

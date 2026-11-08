@@ -11,8 +11,8 @@
 <meta name="description" content="نکات و سوالات کنکور با جدول تناوبی">
 <title>جمع‌بندی کنکور</title>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/icon-192.svg">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.svg">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&family=Lalezar&display=swap">
@@ -133,7 +133,7 @@ main{padding-block:14px}
 .empty strong{color:var(--ink);font-size:16px}
 
 /* floating add button — sits above bottom nav */
-.fab{position:fixed;z-index:20;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(72px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--accent-ink);border:0;border-radius:28px;min-height:52px;padding:0 22px;font-weight:700;box-shadow:0 6px 18px rgba(10,30,60,.28);display:flex;align-items:center;gap:8px}
+.fab{position:fixed;z-index:20;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(86px + env(safe-area-inset-bottom,0px));background:var(--accent);color:var(--accent-ink);border:0;border-radius:28px;min-height:52px;padding:0 22px;font-weight:700;box-shadow:0 6px 18px rgba(10,30,60,.28);display:flex;align-items:center;gap:8px}
 .fab span{font-size:22px;line-height:1}
 
 /* bottom navigation */
@@ -1052,7 +1052,12 @@ function sizeFrame(){
   const f = $('pt-frame'); const top = document.querySelector('.top');
   const nav = document.querySelector('.bottomnav');
   const navH = nav ? nav.getBoundingClientRect().height : 64;
-  f.style.height = Math.max(320, window.innerHeight - top.getBoundingClientRect().height - navH - 2) + 'px';
+  const y = f.getBoundingClientRect().top + window.scrollY;
+  f.style.height = Math.max(320, window.innerHeight - y - navH) + 'px';
+}
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(() => { if (!$('pt-wrap').hidden) sizeFrame(); });
+  ro.observe(document.querySelector('.bottomnav')); ro.observe(document.querySelector('.top'));
 }
 function showView(v){
   $('app').dataset.view = v;
