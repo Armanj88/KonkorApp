@@ -532,9 +532,16 @@ const SUBJ = {};
 G.forEach(([grp, list]) => list.forEach(([id, name, ch]) => { SUBJ[id] = {id, name, grp, ch}; }));
 
 /* ---------- state & helpers ---------- */
-const S = { tab:'note', q:'', f:{subject:'',chapter:'',imp:[],att:'',rev:'',sort:'new'}, items:[], custom:{chapters:[],subs:[]}, loaded:false };
+const PAGE = 10;
+const S = {
+  tab:'note', q:'', f:{subject:'',chapter:'',imp:[],att:'',rev:'',sort:'new'},
+  items:[], custom:{chapters:[],subs:[]}, loaded:false,
+  hasMore:true, loadingMore:false, offset:0,
+  counts:{note:0, q:0}
+};
 let sb = null, uid = null, F = null, delTimer = null;
 const URLS = new Map();
+let mediaObs = null;
 const $ = id => document.getElementById(id);
 const fa = n => Number(n).toLocaleString('fa-IR');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -572,34 +579,130 @@ function note(msg, ms){
 function mapRow(r){
   return {id:r.id, kind:r.kind, subject:r.subject, chapter:r.chapter, sub:r.sub || '', imp:r.imp, text:r.text || '', answer:r.answer || '', source:r.source || '', files:Array.isArray(r.files) ? r.files : [], reviewed:!!r.reviewed, createdAt:Date.parse(r.created_at) || Date.now()};
 }
-async function signUrls(items){
+async function signPaths(paths){
   const now = Date.now();
-  const need = [...new Set(items.flatMap(i => (i.files || []).map(f => f.path)))].filter(p => !(URLS.get(p) && URLS.get(p).exp > now + 600000));
+  const need = [...new Set(paths.filter(Boolean))].filter(p => !(URLS.get(p) && URLS.get(p).exp > now + 600000));
+  if (!need.length) return;
   for (let i = 0; i < need.length; i += 100) {
     const {data, error} = await sb.storage.from(BUCKET).createSignedUrls(need.slice(i, i + 100), 21600);
     if (error) throw error;
     (data || []).forEach(d => { if (d.signedUrl) URLS.set(d.path, {url:d.signedUrl, exp:now + 21600000}); });
   }
 }
-async function loadAll(){
-  const rows = [];
-  for (let from = 0; ; from += 1000) {
-    const {data, error} = await sb.from('items').select('*').order('created_at', {ascending:false}).range(from, from + 999);
-    if (error) throw error;
-    rows.push(...data);
-    if (data.length < 1000) break;
-  }
-  S.items = rows.map(mapRow);
+async function signUrls(items){
+  await signPaths(items.flatMap(i => (i.files || []).map(f => f.path)));
+}
+async function ensurePathUrl(path){
+  if (!path) return '';
+  const now = Date.now();
+  const cached = URLS.get(path);
+  if (cached && cached.exp > now + 60000) return cached.url;
+  await signPaths([path]);
+  return URLS.get(path)?.url || '';
+}
+async function loadCounts(){
+  const [n, q] = await Promise.all([
+    sb.from('items').select('id', {count:'exact', head:true}).eq('kind', 'note'),
+    sb.from('items').select('id', {count:'exact', head:true}).eq('kind', 'q')
+  ]);
+  if (!n.error) S.counts.note = n.count || 0;
+  if (!q.error) S.counts.q = q.count || 0;
+}
+async function loadMeta(){
   const m = await sb.from('user_meta').select('chapters,subs').maybeSingle();
   if (m.error) throw m.error;
   S.custom = {chapters:m.data?.chapters || [], subs:m.data?.subs || []};
-  try { await signUrls(S.items); } catch(e){ note('نمایش فایل‌ها انجام نشد. صفحه رو دوباره باز کن.'); }
-  S.loaded = true; render();
+}
+function sanitizeTerm(t){
+  return String(t || '').replace(/[%_,.()]/g, ' ').trim();
+}
+function applyServerFilters(query){
+  const f = S.f;
+  query = query.eq('kind', S.tab);
+  if (f.subject) query = query.eq('subject', f.subject);
+  if (f.chapter) query = query.eq('chapter', f.chapter);
+  if (f.imp.length) query = query.in('imp', f.imp);
+  if (f.rev === 'yes') query = query.eq('reviewed', true);
+  if (f.rev === 'no') query = query.eq('reviewed', false);
+  if (f.att === 'none') query = query.eq('files', JSON.stringify([]));
+  else if (f.att === 'any') query = query.neq('files', JSON.stringify([]));
+  if (f.sort === 'old') query = query.order('created_at', {ascending:true});
+  else if (f.sort === 'imp') query = query.order('imp', {ascending:false}).order('created_at', {ascending:false});
+  else query = query.order('created_at', {ascending:false});
+  const q = norm(S.q);
+  if (q) {
+    for (const raw of q.split(/\s+/).filter(Boolean)) {
+      const t = sanitizeTerm(raw);
+      if (!t) continue;
+      const p = `%${t}%`;
+      query = query.or(`text.ilike.${p},answer.ilike.${p},source.ilike.${p},chapter.ilike.${p},sub.ilike.${p}`);
+    }
+  }
+  return query;
+}
+function attMatch(it){
+  const att = S.f.att;
+  if (!att || att === 'any' || att === 'none') return true;
+  const files = it.files || [];
+  if (att === 'img') return files.some(x => x.type.startsWith('image/'));
+  if (att === 'pdf') return files.some(x => x.type === 'application/pdf');
+  return true;
+}
+async function loadPage(reset){
+  if (reset) {
+    S.items = [];
+    S.offset = 0;
+    S.hasMore = true;
+    S.loaded = false;
+    render();
+  }
+  if (!S.hasMore || S.loadingMore) return;
+  S.loadingMore = true;
+  if (!reset) render();
+  try {
+    const needClientAtt = S.f.att === 'img' || S.f.att === 'pdf';
+    const collected = [];
+    let guard = 0;
+    while (collected.length < PAGE && S.hasMore && guard < 25) {
+      guard++;
+      const from = S.offset;
+      const to = from + PAGE - 1;
+      let q = applyServerFilters(sb.from('items').select('*')).range(from, to);
+      const {data, error} = await q;
+      if (error) throw error;
+      const rows = (data || []).map(mapRow);
+      S.offset = from + rows.length;
+      S.hasMore = rows.length >= PAGE;
+      const add = needClientAtt ? rows.filter(attMatch) : rows;
+      const ids = new Set([...S.items, ...collected].map(i => i.id));
+      add.forEach(r => { if (!ids.has(r.id)) { collected.push(r); ids.add(r.id); } });
+      if (!needClientAtt) break;
+      if (!rows.length) { S.hasMore = false; break; }
+    }
+    const ids = new Set(S.items.map(i => i.id));
+    collected.forEach(r => { if (!ids.has(r.id)) S.items.push(r); });
+    S.loaded = true;
+  } finally {
+    S.loadingMore = false;
+    render();
+  }
+}
+let filterTimer = null;
+function scheduleReload(){
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => { loadPage(true).catch(() => note('خواندن اطلاعات انجام نشد. دوباره امتحان کن.', 4000)); }, 280);
+}
+async function loadFirst(){
+  await Promise.all([loadMeta(), loadCounts()]);
+  await loadPage(true);
 }
 async function removeItem(it){
   const {error} = await sb.from('items').delete().eq('id', it.id);
   if (error) throw error;
-  S.items = S.items.filter(x => x.id !== it.id); render();
+  S.items = S.items.filter(x => x.id !== it.id);
+  if (it.kind === 'note' && S.counts.note > 0) S.counts.note--;
+  if (it.kind === 'q' && S.counts.q > 0) S.counts.q--;
+  render();
   const paths = (it.files || []).map(f => f.path);
   if (paths.length) { try { await sb.storage.from(BUCKET).remove(paths); } catch(e){} }
 }
@@ -634,8 +737,18 @@ function thumbsHtml(files){
   const pdfs = files.filter(x => x.type === 'application/pdf');
   if (!imgs.length && !pdfs.length) return '';
   return `<div class="thumbs">` +
-    imgs.map(x => `<img class="thumb" data-act="zoom" data-src="${esc(urlOf(x.path))}" src="${esc(urlOf(x.path))}" alt="${esc(x.name)}" loading="lazy">`).join('') +
-    pdfs.map(x => `<a class="pdf" data-act="pdf" href="${esc(urlOf(x.path))}" target="_blank" rel="noopener"><em>PDF</em><span>${esc(x.name)}</span></a>`).join('') +
+    imgs.map(x => {
+      const u = urlOf(x.path);
+      return u
+        ? `<img class="thumb" data-act="zoom" data-path="${esc(x.path)}" data-src="${esc(u)}" src="${esc(u)}" alt="${esc(x.name)}" loading="lazy">`
+        : `<img class="thumb lazy-media" data-act="zoom" data-path="${esc(x.path)}" alt="${esc(x.name)}" loading="lazy">`;
+    }).join('') +
+    pdfs.map(x => {
+      const u = urlOf(x.path);
+      return u
+        ? `<a class="pdf" data-act="pdf" data-path="${esc(x.path)}" href="${esc(u)}" target="_blank" rel="noopener"><em>PDF</em><span>${esc(x.name)}</span></a>`
+        : `<a class="pdf lazy-media" data-act="pdf" data-path="${esc(x.path)}" href="#" target="_blank" rel="noopener"><em>PDF</em><span>${esc(x.name)}</span></a>`;
+    }).join('') +
     `</div>`;
 }
 function cardHtml(it){
@@ -658,24 +771,30 @@ function activeFilterCount(){
   const f = S.f; return (f.subject?1:0) + (f.chapter?1:0) + (f.imp.length?1:0) + (f.att?1:0) + (f.rev?1:0) + (f.sort!=='new'?1:0);
 }
 function render(){
-  const notes = S.items.filter(i => i.kind === 'note').length, qs = S.items.filter(i => i.kind === 'q').length;
-  $('cnt-note').textContent = fa(notes); $('cnt-q').textContent = fa(qs);
-  $('stats').textContent = (notes + qs) ? `${fa(notes + qs)} مورد ثبت‌شده` : '';
+  $('cnt-note').textContent = fa(S.counts.note);
+  $('cnt-q').textContent = fa(S.counts.q);
+  const totalAll = S.counts.note + S.counts.q;
+  $('stats').textContent = totalAll ? `${fa(totalAll)} مورد ثبت‌شده` : '';
   const n = activeFilterCount(); const b = $('fbadge'); b.hidden = !n; b.textContent = fa(n);
   const list = $('list');
-  if (!S.loaded) { list.innerHTML = `<div class="empty"><strong>در حال بارگذاری…</strong></div>`; return; }
-  let arr = S.items.filter(matches);
-  const sort = S.f.sort;
-  arr.sort((a, b) => sort === 'old' ? a.createdAt - b.createdAt : sort === 'imp' ? (b.imp - a.imp) || (b.createdAt - a.createdAt) : b.createdAt - a.createdAt);
-  if (!arr.length) {
-    const total = S.items.filter(i => i.kind === S.tab).length;
+  if (!S.loaded && !S.loadingMore) { list.innerHTML = `<div class="empty"><strong>در حال بارگذاری…</strong></div>`; return; }
+  const arr = S.items;
+  if (!arr.length && !S.loadingMore) {
+    const total = S.counts[S.tab] || 0;
     const kind = S.tab === 'note' ? 'نکته' : 'سوال';
-    list.innerHTML = total
+    const filtered = !!(S.q || activeFilterCount());
+    list.innerHTML = (total && filtered)
       ? `<div class="empty"><strong>چیزی پیدا نشد</strong><span>جستجو یا فیلترها رو کم‌تر کن.</span></div>`
-      : `<div class="empty"><strong>هنوز ${kind}ای ثبت نکردی</strong><span>با دکمه «ثبت» پایین صفحه، اولین ${kind} رو با درس و مبحثش اضافه کن.</span></div>`;
+      : total
+        ? `<div class="empty"><strong>چیزی پیدا نشد</strong><span>جستجو یا فیلترها رو کم‌تر کن.</span></div>`
+        : `<div class="empty"><strong>هنوز ${kind}ای ثبت نکردی</strong><span>با دکمه «ثبت» پایین صفحه، اولین ${kind} رو با درس و مبحثش اضافه کن.</span></div>`;
     return;
   }
-  list.innerHTML = arr.map(cardHtml).join('');
+  let html = arr.map(cardHtml).join('');
+  if (S.loadingMore) html += `<div class="empty" style="padding:16px 0"><strong>در حال بارگذاری بیشتر…</strong></div>`;
+  else if (S.hasMore && arr.length) html += `<div class="empty" id="load-more-sent" style="padding:12px 0;color:var(--muted);font-size:13px">برای دیدن موارد بیشتر اسکرول کن</div>`;
+  list.innerHTML = html;
+  observeMedia();
 }
 
 /* ---------- filters ---------- */
@@ -683,48 +802,94 @@ function bindFilters(){
   subjectOptions($('fl-subject'), 'همه درس‌ها');
   fillSelect($('fl-chapter'), [], 'همه مبحث‌ها', '');
   $('btn-filter').onclick = () => { const h = $('filters').hidden; $('filters').hidden = !h; $('btn-filter').setAttribute('aria-expanded', String(h)); };
-  $('q').addEventListener('input', e => { S.q = e.target.value; render(); });
+  $('q').addEventListener('input', e => { S.q = e.target.value; scheduleReload(); });
   $('fl-subject').onchange = e => {
     S.f.subject = e.target.value; S.f.chapter = '';
     fillSelect($('fl-chapter'), chaptersOf(S.f.subject), 'همه مبحث‌ها', '');
-    $('fl-chapter').disabled = !S.f.subject; render();
+    $('fl-chapter').disabled = !S.f.subject; scheduleReload();
   };
-  $('fl-chapter').onchange = e => { S.f.chapter = e.target.value; render(); };
-  $('fl-att').onchange = e => { S.f.att = e.target.value; render(); };
-  $('fl-rev').onchange = e => { S.f.rev = e.target.value; render(); };
-  $('fl-sort').onchange = e => { S.f.sort = e.target.value; render(); };
+  $('fl-chapter').onchange = e => { S.f.chapter = e.target.value; scheduleReload(); };
+  $('fl-att').onchange = e => { S.f.att = e.target.value; scheduleReload(); };
+  $('fl-rev').onchange = e => { S.f.rev = e.target.value; scheduleReload(); };
+  $('fl-sort').onchange = e => { S.f.sort = e.target.value; scheduleReload(); };
   $('fl-imp').addEventListener('click', e => {
     const b = e.target.closest('button[data-v]'); if (!b) return;
     const v = Number(b.dataset.v); const on = S.f.imp.includes(v);
     S.f.imp = on ? S.f.imp.filter(x => x !== v) : [...S.f.imp, v];
-    b.setAttribute('aria-pressed', String(!on)); render();
+    b.setAttribute('aria-pressed', String(!on)); scheduleReload();
   });
   $('fl-clear').onclick = () => {
     S.f = {subject:'',chapter:'',imp:[],att:'',rev:'',sort:'new'}; S.q = ''; $('q').value = '';
     $('fl-subject').value = ''; fillSelect($('fl-chapter'), [], 'همه مبحث‌ها', ''); $('fl-chapter').disabled = true;
     $('fl-att').value = ''; $('fl-rev').value = ''; $('fl-sort').value = 'new';
-    $('fl-imp').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', 'false')); render();
+    $('fl-imp').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', 'false')); scheduleReload();
   };
   function selectTab(tab){
+    if (S.tab === tab) { showView('rv'); return; }
     S.tab = tab;
     document.querySelectorAll('#tab-note,#tab-q').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === tab)));
     $('tab-pt').setAttribute('aria-selected', 'false');
     showView('rv');
     saveTab(tab);
-    render();
+    loadPage(true);
   }
   $('tab-note').onclick = () => selectTab('note');
   $('tab-q').onclick = () => selectTab('q');
 }
 
 /* ---------- list interactions ---------- */
+function observeMedia(){
+  if (!mediaObs) {
+    mediaObs = new IntersectionObserver(async entries => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        const el = en.target;
+        mediaObs.unobserve(el);
+        const path = el.dataset.path;
+        if (!path) continue;
+        try {
+          const url = await ensurePathUrl(path);
+          if (!url) continue;
+          if (el.tagName === 'IMG') {
+            el.src = url;
+            el.dataset.src = url;
+            el.classList.remove('lazy-media');
+          } else if (el.tagName === 'A') {
+            el.href = url;
+            el.classList.remove('lazy-media');
+          }
+        } catch(_){}
+      }
+    }, {root:null, rootMargin:'200px 0px', threshold:0.01});
+  }
+  document.querySelectorAll('.lazy-media[data-path]').forEach(el => mediaObs.observe(el));
+}
 function bindList(){
   $('list').addEventListener('click', async e => {
     const card = e.target.closest('.card'); if (!card) return;
     const it = S.items.find(x => x.id === card.dataset.id); if (!it) return;
-    const act = e.target.closest('[data-act]')?.dataset.act;
-    if (act === 'pdf') return;
-    if (act === 'zoom') { const lb = $('lightbox'); lb.querySelector('img').src = e.target.dataset.src; lb.hidden = false; return; }
+    const actEl = e.target.closest('[data-act]');
+    const act = actEl?.dataset.act;
+    if (act === 'pdf') {
+      const path = actEl.dataset.path;
+      if (path && (!actEl.href || actEl.getAttribute('href') === '#')) {
+        e.preventDefault();
+        try {
+          const url = await ensurePathUrl(path);
+          if (url) { actEl.href = url; window.open(url, '_blank', 'noopener'); }
+        } catch(_){}
+      }
+      return;
+    }
+    if (act === 'zoom') {
+      const path = actEl.dataset.path || e.target.dataset.path;
+      let src = e.target.dataset.src || e.target.src;
+      if ((!src || src.endsWith('/')) && path) {
+        try { src = await ensurePathUrl(path); } catch(_){}
+      }
+      if (src) { const lb = $('lightbox'); lb.querySelector('img').src = src; lb.hidden = false; }
+      return;
+    }
     if (act === 'rev') {
       const val = !it.reviewed;
       it.reviewed = val; render();
@@ -735,6 +900,16 @@ function bindList(){
     openSheet(it);
   });
   $('lightbox').onclick = () => { $('lightbox').hidden = true; };
+  let scrollTick = 0;
+  window.addEventListener('scroll', () => {
+    if (scrollTick) return;
+    scrollTick = requestAnimationFrame(() => {
+      scrollTick = 0;
+      if (!S.loaded || !S.hasMore || S.loadingMore) return;
+      const doc = document.documentElement;
+      if (doc.scrollTop + window.innerHeight > doc.scrollHeight - 400) loadPage(false);
+    });
+  }, {passive:true});
 }
 
 /* ---------- sheet (add / edit) ---------- */
@@ -777,7 +952,7 @@ function renderFiles(){
   fill('f-files-q', 'q');
   fill('f-files-ans', 'ans');
 }
-function openSheet(it){
+async function openSheet(it){
   F = it
     ? {id:it.id, kind:it.kind, subject:it.subject, chapter:it.chapter, sub:it.sub || '', imp:it.imp, files:[...(it.files || [])], pending:[], removed:[], reviewed:!!it.reviewed, createdAt:it.createdAt}
     : {id:null, kind:S.tab, subject:S.f.subject || '', chapter:S.f.chapter || '', sub:'', imp:2, files:[], pending:[], removed:[], reviewed:false, createdAt:0};
@@ -787,7 +962,11 @@ function openSheet(it){
   $('f-del').hidden = !it; $('f-del').textContent = 'حذف'; clearTimeout(delTimer);
   $('f-save').disabled = false; $('f-save').textContent = 'ذخیره';
   $('f-pick-q').hidden = false; $('f-pick-ans').hidden = false;
-  setKind(F.kind); setImp(F.imp); syncPickers(); renderFiles();
+  setKind(F.kind); setImp(F.imp); syncPickers();
+  if (it?.files?.length) {
+    try { await signUrls([it]); } catch(_){}
+  }
+  renderFiles();
   $('back').hidden = false;
 }
 function closeSheet(){
@@ -884,7 +1063,17 @@ async function save(){
       : await sb.from('items').insert(row).select().single();
     if (res.error) throw {code:'db'};
     const it = mapRow(res.data), i = S.items.findIndex(x => x.id === it.id);
-    if (i >= 0) S.items[i] = it; else S.items.push(it);
+    const wasNew = i < 0;
+    if (i >= 0) {
+      if (matches(it) && attMatch(it)) S.items[i] = it;
+      else S.items.splice(i, 1);
+    } else if (matches(it) && attMatch(it)) {
+      S.items.unshift(it);
+    }
+    if (wasNew) {
+      if (it.kind === 'note') S.counts.note++;
+      else if (it.kind === 'q') S.counts.q++;
+    }
     try { await signUrls([it]); } catch(e){}
     if (F.removed.length) { try { await sb.storage.from(BUCKET).remove(F.removed); } catch(e){} }
     closeSheet(); render();
@@ -1144,11 +1333,16 @@ function restoreTab(){
   const t = readTab();
   if (t === 'pt') showView('pt');
   else {
-    S.tab = t;
     document.querySelectorAll('#tab-note,#tab-q').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === t)));
     $('tab-pt').setAttribute('aria-selected', 'false');
     showView('rv');
-    render();
+    if (t !== S.tab) {
+      S.tab = t;
+      loadPage(true);
+    } else {
+      S.tab = t;
+      render();
+    }
   }
 }
 
@@ -1221,14 +1415,16 @@ const CONFIGURED = SUPABASE_URL && SUPABASE_ANON_KEY && !/YOUR_/.test(SUPABASE_U
 function showAuth(){ $('auth').hidden = false; $('app').hidden = true; }
 async function startApp(user){
   uid = user.id; $('auth').hidden = true; $('app').hidden = false;
-  S.loaded = false; S.items = []; render();
-  try { await loadAll(); }
+  S.loaded = false; S.items = []; S.offset = 0; S.hasMore = true; S.counts = {note:0, q:0}; URLS.clear();
+  render();
+  try { await loadFirst(); }
   catch(e){ S.loaded = true; note('خواندن اطلاعات انجام نشد. صفحه رو دوباره باز کن.'); render(); }
   try { await loadPt(); } catch(e){ PT.notes = {}; PT.error = 'missing'; if (PT.frameReady) ptInit(); }
   restoreTab();
 }
 function stopApp(){
-  uid = null; S.items = []; S.loaded = false; URLS.clear();
+  uid = null; S.items = []; S.loaded = false; S.hasMore = true; S.offset = 0; S.counts = {note:0, q:0}; URLS.clear();
+  if (mediaObs) { mediaObs.disconnect(); mediaObs = null; }
   PT.notes = null; PT.frameReady = false; PT.error = '';
   $('pt-frame').setAttribute('src', 'about:blank'); showView('rv');
   if (F) closeSheet();
@@ -1266,7 +1462,16 @@ $('auth-form').addEventListener('submit', e => { e.preventDefault(); doAuth('in'
 $('auth-signup').onclick = () => doAuth('up');
 $('btn-out').onclick = () => { if (sb) sb.auth.signOut(); };
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && uid && S.loaded) signUrls(S.items).then(render).catch(() => {});
+  if (document.visibilityState !== 'visible' || !uid || !S.loaded) return;
+  const paths = [...document.querySelectorAll('[data-path]')].map(el => el.dataset.path).filter(Boolean);
+  if (paths.length) signPaths(paths).then(() => {
+    document.querySelectorAll('[data-path]').forEach(el => {
+      const u = urlOf(el.dataset.path);
+      if (!u) return;
+      if (el.tagName === 'IMG') { el.src = u; el.dataset.src = u; }
+      else if (el.tagName === 'A' && el.dataset.act === 'pdf') el.href = u;
+    });
+  }).catch(() => {});
 });
 if (!CONFIGURED) {
   $('a-err').textContent = 'اتصال به Supabase تنظیم نشده. مقدار SUPABASE_URL و SUPABASE_ANON_KEY رو بالای اسکریپت index.html بنویس.';
