@@ -230,7 +230,14 @@ main{padding-block:14px}
 .tsheet .sheethead{position:sticky;top:0;z-index:2;background:var(--bg);padding:14px 0 8px}
 .tsel{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .tbody{display:grid;gap:10px}
-.tgrp{font-size:12px;color:var(--muted);font-weight:700;margin:6px 2px 0}
+.tgrp{display:grid;gap:8px}
+.tgh{width:100%;display:flex;align-items:center;gap:10px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:0 14px;min-height:48px;text-align:right}
+.tgt{flex:1;font-weight:800;font-size:14px}
+.tgn{color:var(--muted);font-size:12px;font-weight:500}
+.tgc{width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);margin:-3px 4px 0 2px;transition:transform .15s}
+.tgh[aria-expanded="true"] .tgc{transform:rotate(-135deg);margin-top:3px}
+.tgh[aria-expanded="true"]{border-color:var(--accent)}
+.tgb{display:grid;gap:10px}
 .tcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px}
 .tname{font-weight:800;font-size:13.5px}
 .tchips{display:flex;flex-wrap:wrap;gap:6px}
@@ -329,6 +336,10 @@ main{padding-block:14px}
 
       <div class="field"><span class="lbl">درس و مبحث</span>
         <button type="button" class="topicbtn empty" id="f-topic" aria-haspopup="dialog">انتخاب مبحث…</button>
+      </div>
+      <div class="field" id="f-subs-wrap" hidden><span class="lbl">زیرمبحث (اختیاری)</span>
+        <div class="tchips" id="f-subs"></div>
+        <div class="newrow" id="f-subnew" hidden><input type="text" id="f-subnew-in" placeholder="نام زیرمبحث جدید" maxlength="80"><button type="button" class="btn primary" id="f-subnew-ok">افزودن</button></div>
       </div>
 
       <div class="field"><span class="lbl">سطح اهمیت</span>
@@ -745,6 +756,10 @@ function syncPickers(){
   const lab = topicLabel();
   $('f-topic').textContent = lab || 'انتخاب مبحث…';
   $('f-topic').classList.toggle('empty', !lab);
+  const on = !!lab; $('f-subs-wrap').hidden = !on;
+  if (!on) { $('f-subnew').hidden = true; return; }
+  $('f-subs').innerHTML = subsOf(F.subject, F.chapter).map(x => `<button type="button" class="tchip sub${F.sub === x ? ' on' : ''}" data-sub="${esc(x)}" aria-pressed="${F.sub === x}">${F.sub === x ? '✓ ' : ''}${esc(x)}</button>`).join('')
+    + '<button type="button" class="tchip sub add" data-fadd="1">+ زیرمبحث</button>';
 }
 function fileRole(f){ return f.role === 'ans' ? 'ans' : 'q'; }
 function renderFiles(){
@@ -768,7 +783,7 @@ function openSheet(it){
     : {id:null, kind:S.tab, subject:S.f.subject || '', chapter:S.f.chapter || '', sub:'', imp:2, files:[], pending:[], removed:[], reviewed:false, createdAt:0};
   $('sheet-title').textContent = it ? 'ویرایش' : 'ثبت مورد جدید';
   $('f-text').value = it?.text || ''; $('f-ans').value = it?.answer || ''; $('f-source').value = it?.source || '';
-  $('f-err').textContent = '';
+  $('f-err').textContent = ''; $('f-subnew').hidden = true;
   $('f-del').hidden = !it; $('f-del').textContent = 'حذف'; clearTimeout(delTimer);
   $('f-save').disabled = false; $('f-save').textContent = 'ذخیره';
   $('f-pick-q').hidden = false; $('f-pick-ans').hidden = false;
@@ -884,7 +899,7 @@ async function save(){
 }
 
 /* ---------- topic picker (bottom sheet) ---------- */
-const T = {add:null};
+const T = {add:null, open:new Set()};
 function topicLabel(){
   if (!F || !F.subject || !F.chapter) return '';
   return [SUBJ[F.subject]?.name, F.chapter, F.sub].filter(Boolean).join(' › ');
@@ -896,28 +911,35 @@ function renderTopic(){
   const sheet = $('tsheet'), keep = sheet.scrollTop;
   let h = '';
   G.forEach(([grp, list]) => {
-    h += `<div class="tgrp">${esc(grp)}</div>`;
-    list.forEach(([id, name]) => {
-      const cur = F.subject === id;
-      h += `<div class="tcard"><div class="tname">${esc(name)}</div><div class="tchips">`;
-      chaptersOf(id).forEach(c => {
-        const on = cur && F.chapter === c;
-        h += `<button type="button" class="tchip${on ? ' on' : ''}" data-s="${id}" data-c="${esc(c)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(c)}</button>`;
-      });
-      h += `<button type="button" class="tchip add" data-add="ch" data-s="${id}">+ مبحث</button></div>`;
-      if (T.add && T.add.kind === 'ch' && T.add.s === id) h += newRow('نام مبحث جدید');
-      if (cur && F.chapter) {
-        h += `<div class="tsubs"><div class="tsl">زیرمبحث «${esc(F.chapter)}» (اختیاری)</div><div class="tchips">`;
-        subsOf(id, F.chapter).forEach(x => {
-          const on = F.sub === x;
-          h += `<button type="button" class="tchip sub${on ? ' on' : ''}" data-sub="${esc(x)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(x)}</button>`;
+    const open = T.open.has(grp);
+    const hasSel = !!F.chapter && list.some(([id]) => F.subject === id);
+    h += `<section class="tgrp"><button type="button" class="tgh" data-grp="${esc(grp)}" aria-expanded="${open}"><span class="tgt">${esc(grp)}</span><span class="tgn">${fa(list.length)} درس${hasSel ? ' · ✓' : ''}</span><span class="tgc" aria-hidden="true"></span></button>`;
+    if (open) {
+      h += '<div class="tgb">';
+      list.forEach(([id, name]) => {
+        const cur = F.subject === id;
+        h += `<div class="tcard"><div class="tname">${esc(name)}</div><div class="tchips">`;
+        chaptersOf(id).forEach(c => {
+          const on = cur && F.chapter === c;
+          h += `<button type="button" class="tchip${on ? ' on' : ''}" data-s="${id}" data-c="${esc(c)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(c)}</button>`;
         });
-        h += `<button type="button" class="tchip sub add" data-add="sub">+ زیرمبحث</button></div>`;
-        if (T.add && T.add.kind === 'sub') h += newRow('نام زیرمبحث جدید');
+        h += `<button type="button" class="tchip add" data-add="ch" data-s="${id}">+ مبحث</button></div>`;
+        if (T.add && T.add.kind === 'ch' && T.add.s === id) h += newRow('نام مبحث جدید');
+        if (cur && F.chapter) {
+          h += `<div class="tsubs"><div class="tsl">زیرمبحث «${esc(F.chapter)}» (اختیاری)</div><div class="tchips">`;
+          subsOf(id, F.chapter).forEach(x => {
+            const on = F.sub === x;
+            h += `<button type="button" class="tchip sub${on ? ' on' : ''}" data-sub="${esc(x)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(x)}</button>`;
+          });
+          h += `<button type="button" class="tchip sub add" data-add="sub">+ زیرمبحث</button></div>`;
+          if (T.add && T.add.kind === 'sub') h += newRow('نام زیرمبحث جدید');
+          h += `</div>`;
+        }
         h += `</div>`;
-      }
-      h += `</div>`;
-    });
+      });
+      h += '</div>';
+    }
+    h += '</section>';
   });
   $('t-body').innerHTML = h;
   $('t-sel').innerHTML = F.chapter ? `<button type="button" class="tchip" data-clear="1">× ${esc(topicLabel())}</button>` : '<span class="tsl">یه مبحث انتخاب کن.</span>';
@@ -938,7 +960,8 @@ async function addCustomTopic(){
   T.add = null; syncPickers(); renderTopic();
 }
 function openTopic(){
-  T.add = null; renderTopic(); $('tback').hidden = false;
+  T.add = null; T.open = new Set([F.subject && SUBJ[F.subject] ? SUBJ[F.subject].grp : G[0][0]]);
+  renderTopic(); $('tback').hidden = false;
   const on = $('t-body').querySelector('.tchip.on');
   if (on) on.scrollIntoView({block:'center'}); else $('tsheet').scrollTop = 0;
 }
@@ -950,6 +973,7 @@ function bindTopic(){
     if (e.target === $('tback')) return closeTopic();
     const b = e.target.closest('button'); if (!b || !F) return;
     const d = b.dataset;
+    if (d.grp !== undefined) { if (T.open.has(d.grp)) T.open.delete(d.grp); else T.open.add(d.grp); renderTopic(); return; }
     if (d.clear) { F.subject = ''; F.chapter = ''; F.sub = ''; T.add = null; }
     else if (d.c !== undefined) {
       if (F.subject === d.s && F.chapter === d.c) { F.subject = ''; F.chapter = ''; F.sub = ''; }
@@ -962,6 +986,18 @@ function bindTopic(){
     else return;
     syncPickers(); renderTopic();
   });
+  $('f-subs').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !F) return;
+    if (b.dataset.sub !== undefined) { F.sub = F.sub === b.dataset.sub ? '' : b.dataset.sub; syncPickers(); }
+    else if (b.dataset.fadd) { $('f-subnew').hidden = false; $('f-subnew-in').focus(); }
+  });
+  const addFormSub = async () => {
+    const n = $('f-subnew-in').value.trim(); if (!n || !F.subject || !F.chapter) return;
+    if (!subsOf(F.subject, F.chapter).includes(n)) { S.custom.subs.push({s:F.subject, c:F.chapter, n}); try { await saveCustom(); } catch(e){} }
+    F.sub = n; $('f-subnew-in').value = ''; $('f-subnew').hidden = true; syncPickers();
+  };
+  $('f-subnew-ok').onclick = addFormSub;
+  $('f-subnew-in').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addFormSub(); } });
   $('tback').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 't-new') { e.preventDefault(); addCustomTopic(); } });
 }
 
