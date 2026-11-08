@@ -222,6 +222,26 @@ main{padding-block:14px}
 #app[data-view="pt"] .rv,#app[data-view="pt"] main{display:none!important}
 #app[data-view="pt"] .top{padding-bottom:0;border-bottom:0}
 #app[data-view="pt"] .fab{display:none!important}
+
+.topicbtn{width:100%;text-align:right;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:11px 12px;min-height:46px;font-weight:600;overflow-wrap:anywhere}
+.topicbtn.empty{color:var(--muted);font-weight:500}
+.tback{z-index:60}
+.tsheet{background:var(--bg);width:100%;max-width:560px;max-height:85dvh;overflow-y:auto;border:1px solid var(--line);border-radius:18px 18px 0 0;padding:0 var(--gutter-r) calc(16px + env(safe-area-inset-bottom,0px)) var(--gutter-l);display:grid;gap:10px;align-content:start}
+.tsheet .sheethead{position:sticky;top:0;z-index:2;background:var(--bg);padding:14px 0 8px}
+.tsel{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tbody{display:grid;gap:10px}
+.tgrp{font-size:12px;color:var(--muted);font-weight:700;margin:6px 2px 0}
+.tcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px}
+.tname{font-weight:800;font-size:13.5px}
+.tchips{display:flex;flex-wrap:wrap;gap:6px}
+.tchip{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:8px 10px;min-height:40px;font-size:12.5px;font-weight:700;text-align:right}
+.tchip.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.tchip.sub{border-radius:999px;min-height:36px;font-weight:500}
+.tchip.sub.on{font-weight:700}
+.tchip.add{border-style:dashed;color:var(--muted);font-weight:500}
+.tsel .tchip{border-radius:999px;min-height:34px;padding:5px 12px;font-size:12px;background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.tsubs{border-top:1px dashed var(--line);padding-top:8px;display:grid;gap:6px}
+.tsl{font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -307,17 +327,8 @@ main{padding-block:14px}
         <button type="button" role="radio" id="f-k-q" data-k="q" aria-checked="false">سوال</button>
       </div>
 
-      <div class="pick">
-        <h3>اول درس و مبحث رو مشخص کن</h3>
-        <div class="field"><label for="f-subject">درس</label><select id="f-subject"></select></div>
-        <div class="field"><label for="f-chapter">مبحث (فصل)</label><select id="f-chapter" disabled></select>
-          <button type="button" class="linkbtn" id="f-add-ch" disabled>+ مبحث جدید</button>
-          <div class="newrow" id="f-newch" hidden><input type="text" id="f-newch-in" placeholder="نام مبحث جدید"><button type="button" class="btn primary" id="f-newch-ok">افزودن</button></div>
-        </div>
-        <div class="field"><label for="f-sub">زیرمبحث (اختیاری)</label><select id="f-sub" disabled></select>
-          <button type="button" class="linkbtn" id="f-add-sub" disabled>+ زیرمبحث جدید</button>
-          <div class="newrow" id="f-newsub" hidden><input type="text" id="f-newsub-in" placeholder="نام زیرمبحث جدید"><button type="button" class="btn primary" id="f-newsub-ok">افزودن</button></div>
-        </div>
+      <div class="field"><span class="lbl">درس و مبحث</span>
+        <button type="button" class="topicbtn empty" id="f-topic" aria-haspopup="dialog">انتخاب مبحث…</button>
       </div>
 
       <div class="field"><span class="lbl">سطح اهمیت</span>
@@ -351,6 +362,14 @@ main{padding-block:14px}
         <button type="button" class="btn danger" id="f-del" hidden>حذف</button>
       </div>
     </form>
+  </div>
+
+  <div class="back tback" id="tback" hidden>
+    <div class="tsheet" id="tsheet" role="dialog" aria-modal="true" aria-labelledby="t-title">
+      <div class="sheethead"><h2 id="t-title">انتخاب مبحث</h2><button type="button" class="btn primary" id="t-ok">تأیید</button></div>
+      <div class="tsel" id="t-sel"></div>
+      <div class="tbody" id="t-body"></div>
+    </div>
   </div>
 
   <div class="back" id="xback" hidden>
@@ -723,13 +742,9 @@ function setImp(v){
   $('f-imp').querySelectorAll('button').forEach(b => b.setAttribute('aria-checked', String(Number(b.dataset.v) === v)));
 }
 function syncPickers(){
-  $('f-subject').value = F.subject || '';
-  const hasS = !!F.subject;
-  fillSelect($('f-chapter'), hasS ? chaptersOf(F.subject) : [], hasS ? 'انتخاب مبحث…' : 'اول درس رو انتخاب کن', F.chapter);
-  $('f-chapter').disabled = !hasS; $('f-add-ch').disabled = !hasS;
-  const hasC = hasS && !!F.chapter;
-  fillSelect($('f-sub'), hasC ? subsOf(F.subject, F.chapter) : [], hasC ? 'بدون زیرمبحث' : 'اول مبحث رو انتخاب کن', F.sub);
-  $('f-sub').disabled = !hasC; $('f-add-sub').disabled = !hasC;
+  const lab = topicLabel();
+  $('f-topic').textContent = lab || 'انتخاب مبحث…';
+  $('f-topic').classList.toggle('empty', !lab);
 }
 function fileRole(f){ return f.role === 'ans' ? 'ans' : 'q'; }
 function renderFiles(){
@@ -753,7 +768,7 @@ function openSheet(it){
     : {id:null, kind:S.tab, subject:S.f.subject || '', chapter:S.f.chapter || '', sub:'', imp:2, files:[], pending:[], removed:[], reviewed:false, createdAt:0};
   $('sheet-title').textContent = it ? 'ویرایش' : 'ثبت مورد جدید';
   $('f-text').value = it?.text || ''; $('f-ans').value = it?.answer || ''; $('f-source').value = it?.source || '';
-  $('f-err').textContent = ''; $('f-newch').hidden = true; $('f-newsub').hidden = true;
+  $('f-err').textContent = '';
   $('f-del').hidden = !it; $('f-del').textContent = 'حذف'; clearTimeout(delTimer);
   $('f-save').disabled = false; $('f-save').textContent = 'ذخیره';
   $('f-pick-q').hidden = false; $('f-pick-ans').hidden = false;
@@ -761,6 +776,7 @@ function openSheet(it){
   $('back').hidden = false;
 }
 function closeSheet(){
+  $('tback').hidden = true;
   F && F.pending.forEach(p => p.url && URL.revokeObjectURL(p.url));
   F = null; $('back').hidden = true;
 }
@@ -779,31 +795,16 @@ async function shrink(file){
   return blob;
 }
 function bindSheet(){
-  subjectOptions($('f-subject'), 'انتخاب درس…');
   $('fab').onclick = () => openSheet(null);
   $('f-close').onclick = closeSheet;
   $('back').addEventListener('click', e => { if (e.target === $('back')) closeSheet(); });
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (!$('lightbox').hidden) $('lightbox').hidden = true; else if (F) closeSheet();
+    if (!$('lightbox').hidden) $('lightbox').hidden = true; else if (!$('tback').hidden) closeTopic(); else if (F) closeSheet();
   });
   $('f-k-note').onclick = () => setKind('note'); $('f-k-q').onclick = () => setKind('q');
   $('f-imp').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b) setImp(Number(b.dataset.v)); });
-  $('f-subject').onchange = e => { F.subject = e.target.value; F.chapter = ''; F.sub = ''; syncPickers(); };
-  $('f-chapter').onchange = e => { F.chapter = e.target.value; F.sub = ''; syncPickers(); };
-  $('f-sub').onchange = e => { F.sub = e.target.value; };
-  $('f-add-ch').onclick = () => { $('f-newch').hidden = false; $('f-newch-in').focus(); };
-  $('f-add-sub').onclick = () => { $('f-newsub').hidden = false; $('f-newsub-in').focus(); };
-  $('f-newch-ok').onclick = async () => {
-    const n = $('f-newch-in').value.trim(); if (!n || !F.subject) return;
-    if (!chaptersOf(F.subject).includes(n)) { S.custom.chapters.push({s:F.subject, n}); try { await saveCustom(); } catch(e){} }
-    F.chapter = n; F.sub = ''; $('f-newch-in').value = ''; $('f-newch').hidden = true; syncPickers();
-  };
-  $('f-newsub-ok').onclick = async () => {
-    const n = $('f-newsub-in').value.trim(); if (!n || !F.subject || !F.chapter) return;
-    if (!subsOf(F.subject, F.chapter).includes(n)) { S.custom.subs.push({s:F.subject, c:F.chapter, n}); try { await saveCustom(); } catch(e){} }
-    F.sub = n; $('f-newsub-in').value = ''; $('f-newsub').hidden = true; syncPickers();
-  };
+  bindTopic();
   function addPendingFiles(fileList, role){
     const bad = [];
     [...fileList].forEach(file => {
@@ -848,8 +849,7 @@ async function save(){
   const err = m => { $('f-err').textContent = m; };
   err('');
   const text = $('f-text').value.trim(), answer = $('f-ans').value.trim(), source = $('f-source').value.trim();
-  if (!F.subject) return err('اول درس رو انتخاب کن.');
-  if (!F.chapter) return err('مبحث رو هم انتخاب کن.');
+  if (!F.subject || !F.chapter) return err('درس و مبحث رو انتخاب کن.');
   if (!text && !answer && !(F.files.length - F.removed.length + F.pending.length)) return err('حداقل یک متن، عکس یا PDF وارد کن.');
   const btn = $('f-save'); btn.disabled = true; btn.textContent = 'در حال ذخیره…';
   const uploaded = [];
@@ -881,6 +881,88 @@ async function save(){
       : 'ذخیره نشد. اتصال رو چک کن و دوباره امتحان کن.');
     btn.disabled = false; btn.textContent = 'ذخیره';
   }
+}
+
+/* ---------- topic picker (bottom sheet) ---------- */
+const T = {add:null};
+function topicLabel(){
+  if (!F || !F.subject || !F.chapter) return '';
+  return [SUBJ[F.subject]?.name, F.chapter, F.sub].filter(Boolean).join(' › ');
+}
+function newRow(ph){
+  return `<div class="newrow"><input type="text" id="t-new" placeholder="${ph}" maxlength="80"><button type="button" class="btn primary" data-addok="1">افزودن</button></div>`;
+}
+function renderTopic(){
+  const sheet = $('tsheet'), keep = sheet.scrollTop;
+  let h = '';
+  G.forEach(([grp, list]) => {
+    h += `<div class="tgrp">${esc(grp)}</div>`;
+    list.forEach(([id, name]) => {
+      const cur = F.subject === id;
+      h += `<div class="tcard"><div class="tname">${esc(name)}</div><div class="tchips">`;
+      chaptersOf(id).forEach(c => {
+        const on = cur && F.chapter === c;
+        h += `<button type="button" class="tchip${on ? ' on' : ''}" data-s="${id}" data-c="${esc(c)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(c)}</button>`;
+      });
+      h += `<button type="button" class="tchip add" data-add="ch" data-s="${id}">+ مبحث</button></div>`;
+      if (T.add && T.add.kind === 'ch' && T.add.s === id) h += newRow('نام مبحث جدید');
+      if (cur && F.chapter) {
+        h += `<div class="tsubs"><div class="tsl">زیرمبحث «${esc(F.chapter)}» (اختیاری)</div><div class="tchips">`;
+        subsOf(id, F.chapter).forEach(x => {
+          const on = F.sub === x;
+          h += `<button type="button" class="tchip sub${on ? ' on' : ''}" data-sub="${esc(x)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(x)}</button>`;
+        });
+        h += `<button type="button" class="tchip sub add" data-add="sub">+ زیرمبحث</button></div>`;
+        if (T.add && T.add.kind === 'sub') h += newRow('نام زیرمبحث جدید');
+        h += `</div>`;
+      }
+      h += `</div>`;
+    });
+  });
+  $('t-body').innerHTML = h;
+  $('t-sel').innerHTML = F.chapter ? `<button type="button" class="tchip" data-clear="1">× ${esc(topicLabel())}</button>` : '<span class="tsl">یه مبحث انتخاب کن.</span>';
+  sheet.scrollTop = keep;
+  const inp = $('t-body').querySelector('.newrow input'); if (inp) inp.focus();
+}
+async function addCustomTopic(){
+  const n = ($('t-new') ? $('t-new').value : '').trim(); if (!n || !T.add) return;
+  if (T.add.kind === 'ch') {
+    const s = T.add.s;
+    if (!chaptersOf(s).includes(n)) { S.custom.chapters.push({s, n}); try { await saveCustom(); } catch(e){} }
+    F.subject = s; F.chapter = n; F.sub = '';
+  } else {
+    if (!F.subject || !F.chapter) return;
+    if (!subsOf(F.subject, F.chapter).includes(n)) { S.custom.subs.push({s:F.subject, c:F.chapter, n}); try { await saveCustom(); } catch(e){} }
+    F.sub = n;
+  }
+  T.add = null; syncPickers(); renderTopic();
+}
+function openTopic(){
+  T.add = null; renderTopic(); $('tback').hidden = false;
+  const on = $('t-body').querySelector('.tchip.on');
+  if (on) on.scrollIntoView({block:'center'}); else $('tsheet').scrollTop = 0;
+}
+function closeTopic(){ $('tback').hidden = true; T.add = null; }
+function bindTopic(){
+  $('f-topic').onclick = openTopic;
+  $('t-ok').onclick = closeTopic;
+  $('tback').addEventListener('click', async e => {
+    if (e.target === $('tback')) return closeTopic();
+    const b = e.target.closest('button'); if (!b || !F) return;
+    const d = b.dataset;
+    if (d.clear) { F.subject = ''; F.chapter = ''; F.sub = ''; T.add = null; }
+    else if (d.c !== undefined) {
+      if (F.subject === d.s && F.chapter === d.c) { F.subject = ''; F.chapter = ''; F.sub = ''; }
+      else { F.subject = d.s; F.chapter = d.c; F.sub = ''; }
+      T.add = null;
+    }
+    else if (d.sub !== undefined) { F.sub = F.sub === d.sub ? '' : d.sub; T.add = null; }
+    else if (d.add) { T.add = d.add === 'ch' ? {kind:'ch', s:d.s} : {kind:'sub'}; }
+    else if (d.addok) { await addCustomTopic(); return; }
+    else return;
+    syncPickers(); renderTopic();
+  });
+  $('tback').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 't-new') { e.preventDefault(); addCustomTopic(); } });
 }
 
 /* ---------- PDF export ---------- */
