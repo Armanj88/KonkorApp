@@ -267,7 +267,7 @@ main{padding-block:14px}
     <div class="wrap">
       <div class="brand">
         <h1>جمع‌بندی کنکور</h1>
-        <div style="display:flex;align-items:center;gap:10px"><div class="stats" id="stats"></div><button class="btn" id="btn-out" type="button" style="min-height:36px;padding:2px 12px;font-size:13px">خروج</button></div>
+        <div style="display:flex;align-items:center;gap:10px"><div class="stats" id="stats"></div><button class="btn" id="btn-zip" type="button" style="min-height:36px;padding:2px 12px;font-size:13px">خروجی ZIP</button><button class="btn" id="btn-out" type="button" style="min-height:36px;padding:2px 12px;font-size:13px">خروج</button></div>
       </div>
       <div class="searchrow rv">
         <input id="q" type="search" placeholder="جستجو در متن، درس و مبحث…" autocomplete="off">
@@ -1269,6 +1269,7 @@ function openExport(){
 function bindExport(){
   subjectOptions($('x-subject'), 'همه درس‌ها (انتخاب دستی)');
   $('btn-export').onclick = openExport;
+  $('btn-zip').onclick = exportZip;
   $('x-close').onclick = () => { $('xback').hidden = true; };
   $('xback').addEventListener('click', e => { if (e.target === $('xback')) $('xback').hidden = true; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('xback').hidden && $('lightbox').hidden) $('xback').hidden = true; });
@@ -1315,6 +1316,120 @@ function bindExport(){
     window.print();
   };
   window.addEventListener('afterprint', () => { document.title = 'جمع‌بندی کنکور'; });
+}
+
+/* ---------- full backup as ZIP ---------- */
+let zipBusy = false;
+function loadJsZip(){
+  if (window.JSZip) return Promise.resolve(window.JSZip);
+  return new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+    sc.onload = () => window.JSZip ? res(window.JSZip) : rej(new Error('jszip'));
+    sc.onerror = () => rej(new Error('jszip'));
+    document.head.appendChild(sc);
+  });
+}
+const zSafe = t => String(t || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'بدون-نام';
+async function fetchAllRows(table, orderCols){
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    let q = sb.from(table).select('*');
+    orderCols.forEach(c => { q = q.order(c, {ascending:true}); });
+    const {data, error} = await q.range(from, from + 999);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+async function exportZip(){
+  if (zipBusy || !uid) return;
+  zipBusy = true;
+  const btn = $('btn-zip'), label = btn.textContent;
+  btn.disabled = true;
+  const step = t => { btn.textContent = t; };
+  try {
+    step('در حال آماده‌سازی…');
+    const [JSZip, rows, metaRes, ptRes] = await Promise.all([
+      loadJsZip(),
+      fetchAllRows('items', ['created_at', 'id']),
+      sb.from('user_meta').select('chapters,subs').maybeSingle(),
+      sb.from('ptable_notes').select('key,items')
+    ]);
+    const items = rows.map(mapRow);
+    const zip = new JSZip();
+    const missing = [];
+    const jobs = [];
+    const used = new Set();
+    const counters = {};
+    const outItems = items.map(it => {
+      const subj = SUBJ[it.subject]?.name || it.subject;
+      const base = [zSafe(subj), zSafe(it.chapter)].join('/');
+      counters[base] = (counters[base] || 0) + 1;
+      const dir = `files/${base}/${it.kind === 'q' ? 'سوال' : 'نکته'}-${String(counters[base]).padStart(3, '0')}`;
+      const files = (it.files || []).map((f, i) => {
+        let name = zSafe(f.name) || `file-${i + 1}`;
+        let zp = `${dir}/${f.role === 'ans' ? 'پاسخ-' : ''}${name}`;
+        for (let n = 2; used.has(zp); n++) zp = `${dir}/${n}-${f.role === 'ans' ? 'پاسخ-' : ''}${name}`;
+        used.add(zp);
+        jobs.push({path:f.path, zp});
+        return {name:f.name, type:f.type, role:f.role === 'ans' ? 'answer' : 'question', zipPath:zp};
+      });
+      return {id:it.id, kind:it.kind === 'q' ? 'question' : 'note', subject:subj, chapter:it.chapter, subtopic:it.sub, importance:IMP[it.imp], text:it.text, answer:it.answer, source:it.source, reviewed:it.reviewed, createdAt:new Date(it.createdAt).toISOString(), files};
+    });
+
+    let done = 0, next = 0;
+    const total = jobs.length;
+    if (total) step(`دانلود فایل‌ها ۰ از ${fa(total)}`);
+    async function worker(){
+      while (next < jobs.length) {
+        const j = jobs[next++];
+        try {
+          const {data, error} = await sb.storage.from(BUCKET).download(j.path);
+          if (error || !data) throw error || new Error('empty');
+          zip.file(j.zp, data, {binary:true});
+        } catch(e){ missing.push(j.zp); }
+        done++;
+        step(`دانلود فایل‌ها ${fa(done)} از ${fa(total)}`);
+      }
+    }
+    await Promise.all(Array.from({length:4}, worker));
+
+    const meta = metaRes.error ? {chapters:[], subs:[]} : (metaRes.data || {chapters:[], subs:[]});
+    const pt = {};
+    (ptRes.data || []).forEach(r => { if (Array.isArray(r.items) && r.items.length) pt[r.key] = r.items; });
+
+    zip.file('data.json', JSON.stringify({exportedAt:new Date().toISOString(), items:outItems, customTopics:meta, periodicTableNotes:pt}, null, 2));
+
+    let txt = '﻿';
+    let ps = null, pc = null;
+    const sIdx = n => SORDER.findIndex(k => SUBJ[k].name === n);
+    outItems.slice().sort((a, b) => sIdx(a.subject) - sIdx(b.subject)).forEach(it => {
+      if (it.subject !== ps) { txt += `\n\n==== ${it.subject} ====\n`; ps = it.subject; pc = null; }
+      if (it.chapter !== pc) { txt += `\n-- ${it.chapter} --\n`; pc = it.chapter; }
+      txt += `\n[${it.kind === 'question' ? 'سوال' : 'نکته'} | اهمیت ${it.importance}${it.subtopic ? ' | ' + it.subtopic : ''}]\n`;
+      if (it.text) txt += it.text + '\n';
+      if (it.source) txt += `منبع: ${it.source}\n`;
+      if (it.answer) txt += `پاسخ: ${it.answer}\n`;
+      it.files.forEach(f => { txt += `پیوست: ${f.zipPath}\n`; });
+    });
+    zip.file('notes-and-questions.txt', txt);
+    if (missing.length) zip.file('missing-files.txt', missing.join('\n'));
+
+    step('در حال ساخت ZIP…');
+    const blob = await zip.generateAsync({type:'blob', compression:'DEFLATE', compressionOptions:{level:3}});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `konkor-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    note(missing.length ? `خروجی ZIP ساخته شد، ولی ${fa(missing.length)} فایل دانلود نشد. اسمشون توی missing-files.txt هست.` : `خروجی ZIP ساخته شد: ${fa(items.length)} مورد و ${fa(total)} فایل.`, 8000);
+  } catch(e){
+    note('ساخت خروجی ZIP انجام نشد. اتصال رو چک کن و دوباره امتحان کن.', 8000);
+  } finally {
+    zipBusy = false; btn.disabled = false; btn.textContent = label;
+  }
 }
 
 /* ---------- last tab memory ---------- */
