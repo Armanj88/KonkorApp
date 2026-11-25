@@ -13,9 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700&family=Lalezar&display=swap">
+<link rel="stylesheet" href="lib/fonts.css">
 <style>*{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;color-scheme:light}
 [hidden]{display:none!important}
@@ -73,6 +71,16 @@ button{cursor:pointer}
 .brand{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
 .brand h1{margin:0;font-family:var(--font-display);font-weight:400;font-size:26px;line-height:1.3;letter-spacing:0}
 .stats{color:var(--muted);font-size:13px;white-space:nowrap}
+.sync{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:3px 10px 3px 12px;font-size:12px;line-height:1.6;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.sync::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.sync.ok::before{background:#2E9D5B}
+.sync.busy::before{background:var(--accent);animation:syncpulse 1s ease-in-out infinite alternate}
+.sync.off::before{background:var(--i2)}
+.sync.warn{color:var(--danger);border-color:var(--danger)}
+.sync.warn::before{background:var(--danger)}
+@keyframes syncpulse{from{opacity:.25}to{opacity:1}}
+.syncrow{display:flex;justify-content:flex-start;margin:-4px 0 10px}
+@media (max-width:420px){.stats{display:none}}
 .tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:10px}
 .tab{border:0;background:transparent;border-radius:9px;padding:8px 10px;font-weight:700;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:8px;min-height:40px}
 .tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
@@ -269,6 +277,7 @@ main{padding-block:14px}
         <h1>جمع‌بندی کنکور</h1>
         <div style="display:flex;align-items:center;gap:10px"><div class="stats" id="stats"></div><button class="btn" id="btn-zip" type="button" style="min-height:36px;padding:2px 12px;font-size:13px">خروجی ZIP</button><button class="btn" id="btn-out" type="button" style="min-height:36px;padding:2px 12px;font-size:13px">خروج</button></div>
       </div>
+      <div class="syncrow"><button type="button" class="sync off" id="sync" aria-live="polite">آماده</button></div>
       <div class="searchrow rv">
         <input id="q" type="search" placeholder="جستجو در متن، درس و مبحث…" autocomplete="off">
         <button class="btn" id="btn-export" type="button">خروجی PDF</button>
@@ -409,7 +418,7 @@ main{padding-block:14px}
 
 
 <div id="print" aria-hidden="true"></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="lib/supabase.js"></script>
 <script>
 /* ---------- Supabase settings: fill these two values ---------- */
 const SUPABASE_URL = 'https://blspbacdagqyfuhlkumm.supabase.co';        // e.g. https://abcdxyz.supabase.co
@@ -535,12 +544,11 @@ G.forEach(([grp, list]) => list.forEach(([id, name, ch]) => { SUBJ[id] = {id, na
 const PAGE = 10;
 const S = {
   tab:'note', q:'', f:{subject:'',chapter:'',imp:[],att:'',rev:'',sort:'new'},
-  items:[], custom:{chapters:[],subs:[]}, loaded:false,
-  hasMore:true, loadingMore:false, offset:0,
+  all:[], items:[], custom:{chapters:[],subs:[]}, customDirty:false, loaded:false,
+  hasMore:false, shown:PAGE * 2, tombs:0, lastSync:0,
   counts:{note:0, q:0}
 };
 let sb = null, uid = null, F = null, delTimer = null;
-const URLS = new Map();
 let mediaObs = null;
 const $ = id => document.getElementById(id);
 const fa = n => Number(n).toLocaleString('fa-IR');
@@ -570,18 +578,52 @@ function fillSelect(sel, list, placeholder, value){
   sel.value = value || '';
 }
 
-/* ---------- storage (Supabase) ---------- */
-const urlOf = p => URLS.get(p)?.url || '';
-function note(msg, ms){
-  const n = $('notice'); n.innerHTML = msg ? `<div class="notice">${esc(msg)}</div>` : '';
-  if (msg && ms) setTimeout(() => { if (n.textContent.includes(msg)) n.innerHTML = ''; }, ms);
+/* ---------- local storage (IndexedDB) ----------
+   Everything the app shows is read from a database on this device, so it keeps working with no internet.
+   Changes are written here first and marked dirty; the sync engine below sends them to Supabase whenever it is reachable. */
+const LDB = {db:null};
+const BLOBS = new Map();      // attachment path -> object URL of the local copy
+const URLS = new Map();       // attachment path -> signed Supabase URL (only used for files not downloaded yet)
+function txDone(t){ return new Promise((res, rej) => { t.oncomplete = () => res(); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error('abort')); }); }
+function reqP(r){ return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+function openLocal(userId){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('konkor-' + userId, 1);
+    r.onupgradeneeded = () => {
+      const d = r.result;
+      d.createObjectStore('items', {keyPath:'id'});                     // notes & questions (dirty:1 = not sent yet)
+      d.createObjectStore('files', {keyPath:'path'}).createIndex('up', 'up'); // attachment blobs (up:0 = not uploaded yet)
+      d.createObjectStore('pt', {keyPath:'key'});                        // periodic-table notes (dirty:1 = not sent yet)
+      d.createObjectStore('tomb', {keyPath:'id'});                       // items deleted here, waiting to be deleted on the server
+      d.createObjectStore('fdel', {keyPath:'path'});                     // attachments removed here, waiting to be removed on the server
+      d.createObjectStore('kv');                                         // custom topics, last sync time
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+    r.onblocked = () => rej(new Error('blocked'));
+  });
 }
-function mapRow(r){
-  return {id:r.id, kind:r.kind, subject:r.subject, chapter:r.chapter, sub:r.sub || '', imp:r.imp, text:r.text || '', answer:r.answer || '', source:r.source || '', files:Array.isArray(r.files) ? r.files : [], reviewed:!!r.reviewed, createdAt:Date.parse(r.created_at) || Date.now()};
+function store(name, mode){ if (!LDB.db) throw new Error('no-db'); return LDB.db.transaction(name, mode || 'readonly').objectStore(name); }
+const lget = (s, k) => reqP(store(s).get(k));
+const lall = s => reqP(store(s).getAll());
+const lkeys = s => reqP(store(s).getAllKeys());
+const lcount = s => reqP(store(s).count());
+async function lput(s, v, k){ const os = store(s, 'readwrite'); os.put(v, k); await txDone(os.transaction); }
+async function ldel(s, k){ const os = store(s, 'readwrite'); os.delete(k); await txDone(os.transaction); }
+async function kvGet(k){ return lget('kv', k); }
+async function kvSet(k, v){ return lput('kv', v, k); }
+
+function blobUrl(path, blob){
+  if (BLOBS.has(path)) return BLOBS.get(path);
+  const u = URL.createObjectURL(blob); BLOBS.set(path, u); return u;
 }
+function dropBlobUrl(path){ const u = BLOBS.get(path); if (u) { URL.revokeObjectURL(u); BLOBS.delete(path); } }
+function dropAllBlobUrls(){ BLOBS.forEach(u => URL.revokeObjectURL(u)); BLOBS.clear(); }
+const urlOf = p => BLOBS.get(p) || URLS.get(p)?.url || '';
 async function signPaths(paths){
+  if (!sb || !uid) return;
   const now = Date.now();
-  const need = [...new Set(paths.filter(Boolean))].filter(p => !(URLS.get(p) && URLS.get(p).exp > now + 600000));
+  const need = [...new Set(paths.filter(Boolean))].filter(p => !BLOBS.has(p) && !(URLS.get(p) && URLS.get(p).exp > now + 600000));
   if (!need.length) return;
   for (let i = 0; i < need.length; i += 100) {
     const {data, error} = await sb.storage.from(BUCKET).createSignedUrls(need.slice(i, i + 100), 21600);
@@ -589,126 +631,329 @@ async function signPaths(paths){
     (data || []).forEach(d => { if (d.signedUrl) URLS.set(d.path, {url:d.signedUrl, exp:now + 21600000}); });
   }
 }
-async function signUrls(items){
-  await signPaths(items.flatMap(i => (i.files || []).map(f => f.path)));
-}
+// Local copy first; a signed URL from Supabase only when the file hasn't been downloaded to this device yet.
 async function ensurePathUrl(path){
   if (!path) return '';
-  const now = Date.now();
+  if (BLOBS.has(path)) return BLOBS.get(path);
+  try { const rec = LDB.db && await lget('files', path); if (rec && rec.blob) return blobUrl(path, rec.blob); } catch(_){}
   const cached = URLS.get(path);
-  if (cached && cached.exp > now + 60000) return cached.url;
-  await signPaths([path]);
+  if (cached && cached.exp > Date.now() + 60000) return cached.url;
+  try { await signPaths([path]); } catch(_){}
   return URLS.get(path)?.url || '';
 }
-async function loadCounts(){
-  const [n, q] = await Promise.all([
-    sb.from('items').select('id', {count:'exact', head:true}).eq('kind', 'note'),
-    sb.from('items').select('id', {count:'exact', head:true}).eq('kind', 'q')
-  ]);
-  if (!n.error) S.counts.note = n.count || 0;
-  if (!q.error) S.counts.q = q.count || 0;
+async function ensureUrls(items){
+  const paths = [...new Set(items.flatMap(i => (i.files || []).map(f => f.path)))];
+  for (const p of paths) { if (!BLOBS.has(p)) { try { const rec = await lget('files', p); if (rec && rec.blob) blobUrl(p, rec.blob); } catch(_){} } }
+  try { await signPaths(paths.filter(p => !BLOBS.has(p))); } catch(_){}
 }
-async function loadMeta(){
-  const m = await sb.from('user_meta').select('chapters,subs').maybeSingle();
-  if (m.error) throw m.error;
-  S.custom = {chapters:m.data?.chapters || [], subs:m.data?.subs || []};
+function note(msg, ms){
+  const n = $('notice'); n.innerHTML = msg ? `<div class="notice">${esc(msg)}</div>` : '';
+  if (msg && ms) setTimeout(() => { if (n.textContent.includes(msg)) n.innerHTML = ''; }, ms);
 }
-function sanitizeTerm(t){
-  return String(t || '').replace(/[%_,.()]/g, ' ').trim();
+function mapRow(r){
+  return {id:r.id, kind:r.kind, subject:r.subject, chapter:r.chapter, sub:r.sub || '', imp:r.imp, text:r.text || '', answer:r.answer || '', source:r.source || '', files:Array.isArray(r.files) ? r.files : [], reviewed:!!r.reviewed, createdAt:Date.parse(r.created_at) || Date.now(), updatedAt:Date.parse(r.updated_at) || 0, dirty:0};
 }
-function applyServerFilters(query){
-  const f = S.f;
-  query = query.eq('kind', S.tab);
-  if (f.subject) query = query.eq('subject', f.subject);
-  if (f.chapter) query = query.eq('chapter', f.chapter);
-  if (f.imp.length) query = query.in('imp', f.imp);
-  if (f.rev === 'yes') query = query.eq('reviewed', true);
-  if (f.rev === 'no') query = query.eq('reviewed', false);
-  if (f.att === 'none') query = query.eq('files', JSON.stringify([]));
-  else if (f.att === 'any') query = query.neq('files', JSON.stringify([]));
-  if (f.sort === 'old') query = query.order('created_at', {ascending:true});
-  else if (f.sort === 'imp') query = query.order('imp', {ascending:false}).order('created_at', {ascending:false});
-  else query = query.order('created_at', {ascending:false});
-  const q = norm(S.q);
-  if (q) {
-    for (const raw of q.split(/\s+/).filter(Boolean)) {
-      const t = sanitizeTerm(raw);
-      if (!t) continue;
-      const p = `%${t}%`;
-      query = query.or(`text.ilike.${p},answer.ilike.${p},source.ilike.${p},chapter.ilike.${p},sub.ilike.${p}`);
-    }
-  }
-  return query;
+function toRow(it){
+  return {id:it.id, user_id:uid, kind:it.kind, subject:it.subject, chapter:it.chapter, sub:it.sub || '', imp:it.imp, text:it.text || '', answer:it.answer || '', source:it.source || '', files:it.files || [], reviewed:!!it.reviewed, created_at:new Date(it.createdAt).toISOString(), updated_at:new Date(it.updatedAt).toISOString()};
 }
-function attMatch(it){
-  const att = S.f.att;
-  if (!att || att === 'any' || att === 'none') return true;
-  const files = it.files || [];
-  if (att === 'img') return files.some(x => x.type.startsWith('image/'));
-  if (att === 'pdf') return files.some(x => x.type === 'application/pdf');
-  return true;
+async function loadLocal(){
+  S.all = await lall('items');
+  const c = await kvGet('custom');
+  S.custom = {chapters:c?.chapters || [], subs:c?.subs || []};
+  S.customDirty = !!c?.dirty;
+  PT.notes = {}; PT.error = ''; PT.dirty = 0;
+  (await lall('pt')).forEach(r => { if (r.dirty) PT.dirty++; if (Array.isArray(r.items) && r.items.length) PT.notes[r.key] = r.items; });
+  S.lastSync = (await kvGet('lastSync')) || 0;
+  S.tombs = await lcount('tomb');
 }
-async function loadPage(reset){
-  if (reset) {
-    S.items = [];
-    S.offset = 0;
-    S.hasMore = true;
-    S.loaded = false;
-    render();
-  }
-  if (!S.hasMore || S.loadingMore) return;
-  S.loadingMore = true;
-  if (!reset) render();
+async function putItemLocal(it, newFiles){
+  it.dirty = 1;
+  const t = LDB.db.transaction(['items', 'files'], 'readwrite');
+  t.objectStore('items').put(it);
+  (newFiles || []).forEach(f => t.objectStore('files').put(f));
+  await txDone(t);
+  const i = S.all.findIndex(x => x.id === it.id);
+  if (i >= 0) S.all[i] = it; else S.all.push(it);
+}
+// Forget attachments locally; ones that already reached the server are queued for removal there.
+async function dropFiles(paths){
+  if (!paths.length) return;
+  const t = LDB.db.transaction(['files', 'fdel'], 'readwrite');
+  const fs = t.objectStore('files'), fd = t.objectStore('fdel');
+  paths.forEach(p => {
+    const r = fs.get(p);
+    r.onsuccess = () => { const rec = r.result; fs.delete(p); if (!rec || rec.up) fd.put({path:p}); };
+  });
+  await txDone(t);
+  paths.forEach(dropBlobUrl);
+}
+async function removeItem(it){
+  const t = LDB.db.transaction(['items', 'tomb'], 'readwrite');
+  t.objectStore('items').delete(it.id);
+  t.objectStore('tomb').put({id:it.id});
+  await txDone(t);
+  S.tombs++;
+  S.all = S.all.filter(x => x.id !== it.id);
+  await dropFiles((it.files || []).map(f => f.path));
+  refreshList(true); render(); kickSync();
+}
+async function saveCustom(){
+  S.customDirty = true;
+  await kvSet('custom', {chapters:S.custom.chapters, subs:S.custom.subs, dirty:1, at:Date.now()});
+  kickSync();
+}
+
+/* ---------- sync with Supabase ----------
+   push: upload new files → send changed items → deletions → custom topics → periodic-table notes
+   pull: fetch what changed on the server (e.g. from another device) → download attachments for offline use */
+const SY = {running:false, again:false, state:'idle', timer:null, dl:null, msg:''};
+function pendingCount(){ return S.all.filter(i => i.dirty).length + (S.tombs || 0) + (S.customDirty ? 1 : 0) + (PT.dirty || 0); }
+function isNetErr(e){
+  if (!e) return true;
+  if (e.name === 'AbortError' || e.name === 'AuthRetryableFetchError' || e.name === 'StorageUnknownError') return true;
+  if (typeof e.status === 'number' && e.status > 0) return false;
+  if (e.code && e.code !== '' && e.code !== 'net') return false;
+  return /fetch|network|abort|timed? ?out|load failed/i.test(String(e.message || e)) || !e.code;
+}
+const chk = r => { if (r && r.error) throw r.error; return r ? r.data : null; };
+function kickSync(delay){ clearTimeout(SY.timer); SY.timer = setTimeout(runSync, delay == null ? 1500 : delay); syncUi(); }
+async function runSync(){
+  if (!uid || !sb || !LDB.db) return;
+  if (SY.running) { SY.again = true; return; }
+  SY.running = true; SY.state = 'sync'; syncUi();
+  const db = LDB.db, live = () => { if (LDB.db !== db) throw {code:'switched'}; };
   try {
-    const needClientAtt = S.f.att === 'img' || S.f.att === 'pdf';
-    const collected = [];
-    let guard = 0;
-    while (collected.length < PAGE && S.hasMore && guard < 25) {
-      guard++;
-      const from = S.offset;
-      const to = from + PAGE - 1;
-      let q = applyServerFilters(sb.from('items').select('*')).range(from, to);
-      const {data, error} = await q;
-      if (error) throw error;
-      const rows = (data || []).map(mapRow);
-      S.offset = from + rows.length;
-      S.hasMore = rows.length >= PAGE;
-      const add = needClientAtt ? rows.filter(attMatch) : rows;
-      const ids = new Set([...S.items, ...collected].map(i => i.id));
-      add.forEach(r => { if (!ids.has(r.id)) { collected.push(r); ids.add(r.id); } });
-      if (!needClientAtt) break;
-      if (!rows.length) { S.hasMore = false; break; }
-    }
-    const ids = new Set(S.items.map(i => i.id));
-    collected.forEach(r => { if (!ids.has(r.id)) S.items.push(r); });
-    S.loaded = true;
+    const {data, error} = await sb.auth.getSession();
+    if (!data?.session) throw (error && isNetErr(error)) ? error : {code:'auth'};
+    if (data.session.user.id !== uid) throw {code:'auth'};
+    await pushFiles(); live();
+    await pushItems(); live();
+    await pushDeletes(); live();
+    await pushCustom(); live();
+    await pushPt(); live();
+    await pullItems(); live();
+    await pullCustom(); live();
+    await pullPt(); live();
+    S.lastSync = Date.now(); await kvSet('lastSync', S.lastSync);
+    SY.state = 'ok'; SY.msg = '';
+    refreshList(true); render();
+    downloadFiles();
+  } catch(e) {
+    if (e && e.code === 'switched') return;
+    SY.state = e && e.code === 'auth' ? 'auth' : isNetErr(e) ? 'offline' : 'error';
+    SY.msg = SY.state === 'error' ? String(e.message || e.code || '') : '';
   } finally {
-    S.loadingMore = false;
-    render();
+    SY.running = false; syncUi();
+    if (SY.again) { SY.again = false; kickSync(400); }
   }
+}
+async function pushFiles(){
+  const pend = await reqP(store('files').index('up').getAll(0));
+  for (const f of pend) {
+    const r = await sb.storage.from(BUCKET).upload(f.path, f.blob, {contentType:f.type});
+    if (r.error && !/exist|duplicate/i.test(r.error.message || '')) throw r.error;
+    // mark uploaded, unless it was removed meanwhile (then remove it from the server too)
+    const t = LDB.db.transaction(['files', 'fdel'], 'readwrite');
+    const g = t.objectStore('files').get(f.path);
+    g.onsuccess = () => { if (g.result) { g.result.up = 1; t.objectStore('files').put(g.result); } else t.objectStore('fdel').put({path:f.path}); };
+    await txDone(t);
+  }
+}
+async function pushItems(){
+  const dirty = S.all.filter(i => i.dirty);
+  if (!dirty.length) return;
+  const notUp = new Set(await reqP(store('files').index('up').getAllKeys(0)));
+  const ready = dirty.filter(i => !(i.files || []).some(f => notUp.has(f.path)));
+  for (let i = 0; i < ready.length; i += 50) {
+    const batch = ready.slice(i, i + 50);
+    chk(await sb.from('items').upsert(batch.map(toRow), {onConflict:'id'}));
+    // clear the dirty mark only if the item wasn't edited again while sending
+    const t = LDB.db.transaction('items', 'readwrite'), os = t.objectStore('items');
+    batch.forEach(it => {
+      const g = os.get(it.id);
+      g.onsuccess = () => { const cur = g.result; if (cur && cur.updatedAt === it.updatedAt) { cur.dirty = 0; os.put(cur); } };
+    });
+    await txDone(t);
+    batch.forEach(it => { const m = S.all.find(x => x.id === it.id); if (m && m.updatedAt === it.updatedAt) m.dirty = 0; });
+  }
+}
+async function pushDeletes(){
+  const ids = await lkeys('tomb');
+  for (let i = 0; i < ids.length; i += 100) {
+    const part = ids.slice(i, i + 100);
+    chk(await sb.from('items').delete().in('id', part));
+    const t = LDB.db.transaction('tomb', 'readwrite'); part.forEach(id => t.objectStore('tomb').delete(id)); await txDone(t);
+  }
+  S.tombs = await lcount('tomb');
+  const paths = await lkeys('fdel');
+  for (let i = 0; i < paths.length; i += 100) {
+    const part = paths.slice(i, i + 100);
+    chk(await sb.storage.from(BUCKET).remove(part));
+    const t = LDB.db.transaction('fdel', 'readwrite'); part.forEach(p => t.objectStore('fdel').delete(p)); await txDone(t);
+  }
+}
+async function pushCustom(){
+  const c = await kvGet('custom');
+  if (!c || !c.dirty) return;
+  chk(await sb.from('user_meta').upsert({user_id:uid, chapters:c.chapters, subs:c.subs}, {onConflict:'user_id'}));
+  const cur = await kvGet('custom');
+  if (cur && cur.at === c.at) { cur.dirty = 0; await kvSet('custom', cur); S.customDirty = false; }
+}
+const ptMissing = e => e && (e.code === '42P01' || e.code === 'PGRST205' || /ptable_notes/.test(e.message || ''));
+async function pushPt(){
+  const recs = (await lall('pt')).filter(r => r.dirty);
+  for (const r of recs) {
+    const res = r.items.length
+      ? await sb.from('ptable_notes').upsert({user_id:uid, key:r.key, items:r.items, updated_at:new Date(r.at).toISOString()}, {onConflict:'user_id,key'})
+      : await sb.from('ptable_notes').delete().eq('user_id', uid).eq('key', r.key);
+    if (res.error) { if (ptMissing(res.error)) return; throw res.error; }
+    const cur = await lget('pt', r.key);
+    if (cur && cur.at === r.at) { if (cur.items.length) { cur.dirty = 0; await lput('pt', cur); } else await ldel('pt', r.key); }
+  }
+  PT.dirty = (await lall('pt')).filter(r => r.dirty).length;
+}
+async function fetchAllRows(table, cols, orderCols){
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    let q = sb.from(table).select(cols);
+    orderCols.forEach(c => { q = q.order(c, {ascending:true}); });
+    const data = chk(await q.range(from, from + 999));
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+async function pullItems(){
+  const heads = await fetchAllRows('items', 'id,updated_at', ['id']);
+  const local = new Map((await lall('items')).map(i => [i.id, i]));
+  const tomb = new Set(await lkeys('tomb'));
+  const need = heads.filter(h => {
+    if (tomb.has(h.id)) return false;
+    const l = local.get(h.id);
+    return !l || (!l.dirty && (Date.parse(h.updated_at) || 0) !== l.updatedAt);
+  }).map(h => h.id);
+  for (let i = 0; i < need.length; i += 100) {
+    const rows = chk(await sb.from('items').select('*').in('id', need.slice(i, i + 100))) || [];
+    const t = LDB.db.transaction('items', 'readwrite'), os = t.objectStore('items');
+    rows.forEach(r => {
+      const g = os.get(r.id);
+      g.onsuccess = () => { if (!(g.result && g.result.dirty)) os.put(mapRow(r)); };   // never overwrite an unsent local edit
+    });
+    await txDone(t);
+  }
+  // items deleted on another device
+  const remote = new Set(heads.map(h => h.id));
+  const gone = [...local.values()].filter(l => !l.dirty && !remote.has(l.id));
+  if (gone.length) {
+    const t = LDB.db.transaction('items', 'readwrite'), os = t.objectStore('items');
+    gone.forEach(l => { const g = os.get(l.id); g.onsuccess = () => { if (g.result && !g.result.dirty) os.delete(l.id); }; });
+    await txDone(t);
+  }
+  S.all = await lall('items');
+}
+async function pullCustom(){
+  const m = chk(await sb.from('user_meta').select('chapters,subs').maybeSingle());
+  const cur = await kvGet('custom');
+  if (cur && cur.dirty) return;
+  S.custom = {chapters:m?.chapters || [], subs:m?.subs || []};
+  await kvSet('custom', {chapters:S.custom.chapters, subs:S.custom.subs, dirty:0, at:Date.now()});
+}
+async function pullPt(){
+  const res = await sb.from('ptable_notes').select('key,items,updated_at');
+  if (res.error) { if (ptMissing(res.error)) { PT.error = 'missing'; return; } throw res.error; }
+  PT.error = '';
+  const before = JSON.stringify(PT.notes);
+  const local = new Map((await lall('pt')).map(r => [r.key, r]));
+  const remote = new Map((res.data || []).map(r => [r.key, r]));
+  const t = LDB.db.transaction('pt', 'readwrite'), os = t.objectStore('pt');
+  remote.forEach((r, k) => { const l = local.get(k); if (!(l && l.dirty)) os.put({key:k, items:Array.isArray(r.items) ? r.items : [], dirty:0, at:Date.parse(r.updated_at) || 0}); });
+  local.forEach((l, k) => { if (!l.dirty && !remote.has(k)) os.delete(k); });
+  await txDone(t);
+  PT.notes = {};
+  (await lall('pt')).forEach(r => { if (r.items.length) PT.notes[r.key] = r.items; });
+  if (PT.frameReady && JSON.stringify(PT.notes) !== before) ptInit();
+}
+// Keep a copy of every attachment on this device so photos and PDFs open offline.
+let dlBusy = false;
+async function downloadFiles(){
+  if (dlBusy || !LDB.db) return;
+  dlBusy = true;
+  const db = LDB.db;
+  try {
+    const have = new Set(await lkeys('files'));
+    const refd = new Set(S.all.flatMap(i => (i.files || []).map(f => f.path)));
+    // clean up copies of attachments that no item uses any more (deleted on another device)
+    const stale = (await reqP(store('files').index('up').getAllKeys(1))).filter(p => !refd.has(p));
+    if (stale.length) { const t = db.transaction('files', 'readwrite'); stale.forEach(p => t.objectStore('files').delete(p)); await txDone(t); stale.forEach(dropBlobUrl); }
+    const types = new Map(S.all.flatMap(i => (i.files || []).map(f => [f.path, f.type])));
+    const jobs = [...refd].filter(p => !have.has(p));
+    if (!jobs.length) return;
+    SY.dl = {done:0, total:jobs.length, fail:0}; syncUi();
+    let next = 0;
+    const worker = async () => {
+      while (next < jobs.length && LDB.db === db) {
+        const p = jobs[next++];
+        try {
+          const {data, error} = await sb.storage.from(BUCKET).download(p);
+          if (error || !data) throw error || new Error('empty');
+          const blob = data.type ? data : new Blob([data], {type:types.get(p) || 'application/octet-stream'});
+          if (LDB.db !== db) return;
+          await lput('files', {path:p, blob, type:blob.type, up:1});
+        } catch(e) {
+          SY.dl.fail++;
+          if (e && e.name === 'QuotaExceededError') { SY.msg = 'quota'; next = jobs.length; }
+        }
+        SY.dl.done++; syncUi();
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+  } catch(_) {
+  } finally {
+    dlBusy = false;
+    if (SY.dl && SY.dl.fail && SY.msg !== 'quota') SY.msg = 'dlfail';
+    SY.dl = null; syncUi();
+  }
+}
+function syncUi(){
+  const el = $('sync'); if (!el) return;
+  const n = pendingCount();
+  let t, cls;
+  if (SY.dl) { t = `دانلود فایل‌ها برای آفلاین ${fa(SY.dl.done)} از ${fa(SY.dl.total)}`; cls = 'busy'; }
+  else if (SY.running) { t = 'در حال همگام‌سازی…'; cls = 'busy'; }
+  else if (SY.state === 'offline') { t = n ? `آفلاین · ${fa(n)} تغییر در صف` : 'آفلاین'; cls = 'off'; }
+  else if (SY.state === 'auth') { t = 'برای همگام‌سازی دوباره وارد شو'; cls = 'warn'; }
+  else if (SY.state === 'error') { t = 'همگام‌سازی انجام نشد'; cls = 'warn'; }
+  else if (SY.msg === 'quota') { t = 'فضای دستگاه برای فایل‌ها کافی نیست'; cls = 'warn'; }
+  else if (n) { t = `${fa(n)} تغییر در صف`; cls = 'off'; }
+  else if (SY.state === 'ok') { t = 'همگام ✓'; cls = 'ok'; }
+  else { t = 'آماده'; cls = 'off'; }
+  el.textContent = t; el.className = 'sync ' + cls;
+  el.title = (S.lastSync ? 'آخرین همگام‌سازی: ' + new Intl.DateTimeFormat('fa-IR', {dateStyle:'short', timeStyle:'short'}).format(new Date(S.lastSync)) : 'هنوز همگام‌سازی نشده') + ' — برای همگام‌سازی الان بزن';
+}
+
+/* ---------- list (filtered from the local copy) ---------- */
+function sortItems(arr){
+  const s = S.f.sort;
+  return arr.sort(s === 'old' ? (a, b) => a.createdAt - b.createdAt
+    : s === 'imp' ? (a, b) => (b.imp - a.imp) || (b.createdAt - a.createdAt)
+    : (a, b) => b.createdAt - a.createdAt);
+}
+function refreshList(keep){
+  S.counts = {note:0, q:0};
+  S.all.forEach(i => { if (i.kind === 'note') S.counts.note++; else if (i.kind === 'q') S.counts.q++; });
+  S.items = sortItems(S.all.filter(matches));
+  if (!keep) S.shown = PAGE * 2;
+  S.hasMore = S.shown < S.items.length;
+}
+function loadPage(reset){
+  if (reset) refreshList(false);
+  else { S.shown += PAGE * 2; S.hasMore = S.shown < S.items.length; }
+  render();
 }
 let filterTimer = null;
 function scheduleReload(){
   clearTimeout(filterTimer);
-  filterTimer = setTimeout(() => { loadPage(true).catch(() => note('خواندن اطلاعات انجام نشد. دوباره امتحان کن.', 4000)); }, 280);
-}
-async function loadFirst(){
-  await Promise.all([loadMeta(), loadCounts()]);
-  await loadPage(true);
-}
-async function removeItem(it){
-  const {error} = await sb.from('items').delete().eq('id', it.id);
-  if (error) throw error;
-  S.items = S.items.filter(x => x.id !== it.id);
-  if (it.kind === 'note' && S.counts.note > 0) S.counts.note--;
-  if (it.kind === 'q' && S.counts.q > 0) S.counts.q--;
-  render();
-  const paths = (it.files || []).map(f => f.path);
-  if (paths.length) { try { await sb.storage.from(BUCKET).remove(paths); } catch(e){} }
-}
-async function saveCustom(){
-  const {error} = await sb.from('user_meta').upsert({user_id:uid, chapters:S.custom.chapters, subs:S.custom.subs}, {onConflict:'user_id'});
-  if (error) throw error;
+  filterTimer = setTimeout(() => loadPage(true), 150);
 }
 
 /* ---------- list ---------- */
@@ -777,22 +1022,21 @@ function render(){
   $('stats').textContent = totalAll ? `${fa(totalAll)} مورد ثبت‌شده` : '';
   const n = activeFilterCount(); const b = $('fbadge'); b.hidden = !n; b.textContent = fa(n);
   const list = $('list');
-  if (!S.loaded && !S.loadingMore) { list.innerHTML = `<div class="empty"><strong>در حال بارگذاری…</strong></div>`; return; }
+  syncUi();
+  if (!S.loaded) { list.innerHTML = `<div class="empty"><strong>در حال بارگذاری…</strong></div>`; return; }
   const arr = S.items;
-  if (!arr.length && !S.loadingMore) {
+  if (!arr.length) {
     const total = S.counts[S.tab] || 0;
     const kind = S.tab === 'note' ? 'نکته' : 'سوال';
-    const filtered = !!(S.q || activeFilterCount());
-    list.innerHTML = (total && filtered)
+    list.innerHTML = total
       ? `<div class="empty"><strong>چیزی پیدا نشد</strong><span>جستجو یا فیلترها رو کم‌تر کن.</span></div>`
-      : total
-        ? `<div class="empty"><strong>چیزی پیدا نشد</strong><span>جستجو یا فیلترها رو کم‌تر کن.</span></div>`
+      : (!S.lastSync && !S.all.length && SY.state !== 'ok')
+        ? `<div class="empty"><strong>${SY.running ? 'در حال دریافت اطلاعات از سرور…' : 'اطلاعات هنوز روی این دستگاه نیست'}</strong><span>برای بار اول، اپ باید یه بار با اینترنت باز بشه تا نکته‌ها و سوال‌هات روی دستگاه ذخیره بشن. بعد از اون بدون اینترنت هم کار می‌کنه.</span></div>`
         : `<div class="empty"><strong>هنوز ${kind}ای ثبت نکردی</strong><span>با دکمه «ثبت» پایین صفحه، اولین ${kind} رو با درس و مبحثش اضافه کن.</span></div>`;
     return;
   }
-  let html = arr.map(cardHtml).join('');
-  if (S.loadingMore) html += `<div class="empty" style="padding:16px 0"><strong>در حال بارگذاری بیشتر…</strong></div>`;
-  else if (S.hasMore && arr.length) html += `<div class="empty" id="load-more-sent" style="padding:12px 0;color:var(--muted);font-size:13px">برای دیدن موارد بیشتر اسکرول کن</div>`;
+  let html = arr.slice(0, S.shown).map(cardHtml).join('');
+  if (S.hasMore) html += `<div class="empty" id="load-more-sent" style="padding:12px 0;color:var(--muted);font-size:13px">برای دیدن موارد بیشتر اسکرول کن</div>`;
   list.innerHTML = html;
   observeMedia();
 }
@@ -891,10 +1135,10 @@ function bindList(){
       return;
     }
     if (act === 'rev') {
-      const val = !it.reviewed;
-      it.reviewed = val; render();
-      const r = await sb.from('items').update({reviewed: val}).eq('id', it.id);
-      if (r.error) { it.reviewed = !val; render(); note('تغییر ذخیره نشد. اتصال رو چک کن.', 4000); }
+      const upd = {...it, reviewed:!it.reviewed, updatedAt:Date.now()};
+      try { await putItemLocal(upd); }
+      catch(e){ note('تغییر ذخیره نشد.', 4000); return; }
+      refreshList(true); render(); kickSync();
       return;
     }
     openSheet(it);
@@ -905,7 +1149,7 @@ function bindList(){
     if (scrollTick) return;
     scrollTick = requestAnimationFrame(() => {
       scrollTick = 0;
-      if (!S.loaded || !S.hasMore || S.loadingMore) return;
+      if (!S.loaded || !S.hasMore) return;
       const doc = document.documentElement;
       if (doc.scrollTop + window.innerHeight > doc.scrollHeight - 400) loadPage(false);
     });
@@ -964,7 +1208,7 @@ async function openSheet(it){
   $('f-pick-q').hidden = false; $('f-pick-ans').hidden = false;
   setKind(F.kind); setImp(F.imp); syncPickers();
   if (it?.files?.length) {
-    try { await signUrls([it]); } catch(_){}
+    await ensureUrls([it]);
   }
   renderFiles();
   $('back').hidden = false;
@@ -1046,43 +1290,28 @@ async function save(){
   if (!F.subject || !F.chapter) return err('درس و مبحث رو انتخاب کن.');
   if (!text && !answer && !(F.files.length - F.removed.length + F.pending.length)) return err('حداقل یک متن، عکس یا PDF وارد کن.');
   const btn = $('f-save'); btn.disabled = true; btn.textContent = 'در حال ذخیره…';
-  const uploaded = [];
   try {
+    // files are kept on this device and uploaded by the sync engine when Supabase is reachable
+    const added = [];
     for (const p of F.pending) {
       let blob = p.file;
       if (p.type.startsWith('image/') && p.type !== 'image/gif') blob = await shrink(p.file);
       const path = `${uid}/${crypto.randomUUID()}.${EXT[blob.type] || 'bin'}`;
-      const up = await sb.storage.from(BUCKET).upload(path, blob, {contentType:blob.type});
-      if (up.error) throw {code:'upload'};
-      uploaded.push({path, name:p.name, type:blob.type, role: p.role === 'ans' ? 'ans' : 'q'});
+      added.push({rec:{path, blob, type:blob.type, up:0}, meta:{path, name:p.name, type:blob.type, role: p.role === 'ans' ? 'ans' : 'q'}});
     }
-    const files = [...F.files.filter(f => !F.removed.includes(f.path)), ...uploaded];
-    const row = {kind:F.kind, subject:F.subject, chapter:F.chapter, sub:F.sub || '', imp:F.imp, text, answer:F.kind === 'q' ? answer : '', source, files, reviewed:F.reviewed, updated_at:new Date().toISOString()};
-    const res = F.id
-      ? await sb.from('items').update(row).eq('id', F.id).select().single()
-      : await sb.from('items').insert(row).select().single();
-    if (res.error) throw {code:'db'};
-    const it = mapRow(res.data), i = S.items.findIndex(x => x.id === it.id);
-    const wasNew = i < 0;
-    if (i >= 0) {
-      if (matches(it) && attMatch(it)) S.items[i] = it;
-      else S.items.splice(i, 1);
-    } else if (matches(it) && attMatch(it)) {
-      S.items.unshift(it);
-    }
-    if (wasNew) {
-      if (it.kind === 'note') S.counts.note++;
-      else if (it.kind === 'q') S.counts.q++;
-    }
-    try { await signUrls([it]); } catch(e){}
-    if (F.removed.length) { try { await sb.storage.from(BUCKET).remove(F.removed); } catch(e){} }
-    closeSheet(); render();
+    const old = F.id ? S.all.find(x => x.id === F.id) : null;
+    const now = Date.now();
+    const it = {id:F.id || crypto.randomUUID(), kind:F.kind, subject:F.subject, chapter:F.chapter, sub:F.sub || '', imp:F.imp, text, answer:F.kind === 'q' ? answer : '', source,
+      files:[...F.files.filter(f => !F.removed.includes(f.path)), ...added.map(a => a.meta)], reviewed:F.reviewed, createdAt:old?.createdAt || F.createdAt || now, updatedAt:now};
+    await putItemLocal(it, added.map(a => a.rec));
+    added.forEach(a => blobUrl(a.meta.path, a.rec.blob));
+    if (F.removed.length) { try { await dropFiles(F.removed); } catch(_){} }
+    closeSheet(); refreshList(true); render(); kickSync();
   } catch(e) {
-    if (uploaded.length) { try { await sb.storage.from(BUCKET).remove(uploaded.map(u => u.path)); } catch(_){} }
-    const c = e && e.code;
+    const c = e && (e.code || e.name);
     err(c === 'decode' ? 'این عکس باز نشد. با فرمت JPEG یا PNG امتحان کن.'
-      : c === 'upload' ? 'آپلود فایل انجام نشد. اتصال رو چک کن و دوباره امتحان کن.'
-      : 'ذخیره نشد. اتصال رو چک کن و دوباره امتحان کن.');
+      : c === 'QuotaExceededError' ? 'فضای ذخیره‌ی دستگاه پره. چند فایل بزرگ رو پاک کن و دوباره امتحان کن.'
+      : 'ذخیره نشد. دوباره امتحان کن.');
     btn.disabled = false; btn.textContent = 'ذخیره';
   }
 }
@@ -1196,7 +1425,7 @@ const SORDER = Object.keys(SUBJ);
 const chIdx = it => { const i = chaptersOf(it.subject).indexOf(it.chapter); return i < 0 ? 999 : i; };
 const subIdx = it => it.sub ? 1 + Math.max(0, subsOf(it.subject, it.chapter).indexOf(it.sub)) : 0;
 function xBase(){
-  return S.items.filter(it => X.kinds.includes(it.kind) && (!X.subject || it.subject === X.subject) && (!X.chapter || it.chapter === X.chapter) && X.imps.includes(it.imp));
+  return S.all.filter(it => X.kinds.includes(it.kind) && (!X.subject || it.subject === X.subject) && (!X.chapter || it.chapter === X.chapter) && X.imps.includes(it.imp));
 }
 function xSort(arr){
   return arr.slice().sort((a, b) => (SORDER.indexOf(a.subject) - SORDER.indexOf(b.subject)) || (chIdx(a) - chIdx(b)) || (subIdx(a) - subIdx(b)) || (a.kind === b.kind ? 0 : a.kind === 'note' ? -1 : 1) || (a.createdAt - b.createdAt));
@@ -1216,7 +1445,7 @@ function xCount(){
 function xRender(){
   const arr = xVisible();
   if (!arr.length) {
-    $('x-list').innerHTML = `<div class="empty"><strong>${S.items.length ? 'موردی پیدا نشد' : 'هنوز چیزی ثبت نکردی'}</strong><span>${S.items.length ? 'درس، مبحث، نوع یا جستجو رو عوض کن.' : ''}</span></div>`;
+    $('x-list').innerHTML = `<div class="empty"><strong>${S.all.length ? 'موردی پیدا نشد' : 'هنوز چیزی ثبت نکردی'}</strong><span>${S.all.length ? 'درس، مبحث، نوع یا جستجو رو عوض کن.' : ''}</span></div>`;
   } else {
     $('x-list').innerHTML = arr.map(it => {
       const crumb = [X.subject ? '' : SUBJ[it.subject]?.name, X.chapter ? '' : it.chapter, it.sub].filter(Boolean).join(' › ');
@@ -1307,7 +1536,7 @@ function bindExport(){
     if (!items.length) { $('x-err').textContent = 'حداقل یک مورد انتخاب کن.'; return; }
     $('x-err').textContent = '';
     const btn = $('x-go'); btn.disabled = true; btn.textContent = 'در حال آماده‌سازی…';
-    try { await signUrls(items); } catch(e){}
+    await ensureUrls(items);
     const root = $('print'); root.innerHTML = buildPrint(items);
     try { await document.fonts.ready; } catch(e){}
     await Promise.all([...root.querySelectorAll('img')].map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 8000); })));
@@ -1324,25 +1553,13 @@ function loadJsZip(){
   if (window.JSZip) return Promise.resolve(window.JSZip);
   return new Promise((res, rej) => {
     const sc = document.createElement('script');
-    sc.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+    sc.src = 'lib/jszip.min.js';
     sc.onload = () => window.JSZip ? res(window.JSZip) : rej(new Error('jszip'));
     sc.onerror = () => rej(new Error('jszip'));
     document.head.appendChild(sc);
   });
 }
 const zSafe = t => String(t || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'بدون-نام';
-async function fetchAllRows(table, orderCols){
-  const out = [];
-  for (let from = 0; ; from += 1000) {
-    let q = sb.from(table).select('*');
-    orderCols.forEach(c => { q = q.order(c, {ascending:true}); });
-    const {data, error} = await q.range(from, from + 999);
-    if (error) throw error;
-    out.push(...(data || []));
-    if (!data || data.length < 1000) break;
-  }
-  return out;
-}
 async function exportZip(){
   if (zipBusy || !uid) return;
   zipBusy = true;
@@ -1351,13 +1568,9 @@ async function exportZip(){
   const step = t => { btn.textContent = t; };
   try {
     step('در حال آماده‌سازی…');
-    const [JSZip, rows, metaRes, ptRes] = await Promise.all([
-      loadJsZip(),
-      fetchAllRows('items', ['created_at', 'id']),
-      sb.from('user_meta').select('chapters,subs').maybeSingle(),
-      sb.from('ptable_notes').select('key,items')
-    ]);
-    const items = rows.map(mapRow);
+    // built from the copy on this device, so it works offline too
+    const JSZip = await loadJsZip();
+    const items = S.all.slice().sort((a, b) => (a.createdAt - b.createdAt) || (a.id < b.id ? -1 : 1));
     const zip = new JSZip();
     const missing = [];
     const jobs = [];
@@ -1386,8 +1599,13 @@ async function exportZip(){
       while (next < jobs.length) {
         const j = jobs[next++];
         try {
-          const {data, error} = await sb.storage.from(BUCKET).download(j.path);
-          if (error || !data) throw error || new Error('empty');
+          let data = (await lget('files', j.path))?.blob;
+          if (!data) {
+            if (SY.state === 'offline') throw new Error('offline');
+            const r = await sb.storage.from(BUCKET).download(j.path);
+            if (r.error || !r.data) throw r.error || new Error('empty');
+            data = r.data;
+          }
           zip.file(j.zp, data, {binary:true});
         } catch(e){ missing.push(j.zp); }
         done++;
@@ -1396,9 +1614,8 @@ async function exportZip(){
     }
     await Promise.all(Array.from({length:4}, worker));
 
-    const meta = metaRes.error ? {chapters:[], subs:[]} : (metaRes.data || {chapters:[], subs:[]});
-    const pt = {};
-    (ptRes.data || []).forEach(r => { if (Array.isArray(r.items) && r.items.length) pt[r.key] = r.items; });
+    const meta = {chapters:S.custom.chapters, subs:S.custom.subs};
+    const pt = {...(PT.notes || {})};
 
     zip.file('data.json', JSON.stringify({exportedAt:new Date().toISOString(), items:outItems, customTopics:meta, periodicTableNotes:pt}, null, 2));
 
@@ -1426,7 +1643,7 @@ async function exportZip(){
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     note(missing.length ? `خروجی ZIP ساخته شد، ولی ${fa(missing.length)} فایل دانلود نشد. اسمشون توی missing-files.txt هست.` : `خروجی ZIP ساخته شد: ${fa(items.length)} مورد و ${fa(total)} فایل.`, 8000);
   } catch(e){
-    note('ساخت خروجی ZIP انجام نشد. اتصال رو چک کن و دوباره امتحان کن.', 8000);
+    note('ساخت خروجی ZIP انجام نشد. دوباره امتحان کن.', 8000);
   } finally {
     zipBusy = false; btn.disabled = false; btn.textContent = label;
   }
@@ -1462,18 +1679,11 @@ function restoreTab(){
 }
 
 /* ---------- periodic table tab ---------- */
-const PT = {notes:null, frameReady:false, error:''};
+const PT = {notes:null, frameReady:false, error:'', dirty:0};
 const PT_KEY = /^(cat-[a-z]+|[0-9]{1,3})$/;
 function ptInit(){
   const w = $('pt-frame').contentWindow;
-  if (w) w.postMessage({pt:'init', notes:PT.notes || {}, error:PT.error}, location.origin);
-}
-async function loadPt(){
-  PT.notes = {}; PT.error = '';
-  const {data, error} = await sb.from('ptable_notes').select('key,items');
-  if (error) { PT.error = 'missing'; }
-  else (data || []).forEach(r => { if (Array.isArray(r.items) && r.items.length) PT.notes[r.key] = r.items; });
-  if (PT.frameReady) ptInit();
+  if (w) w.postMessage({pt:'init', notes:PT.notes || {}, error:''}, location.origin);   // notes are always kept on the device and synced
 }
 function sizeFrame(){
   const f = $('pt-frame'); const top = document.querySelector('.top');
@@ -1514,11 +1724,11 @@ function bindPt(){
     try {
       const key = String(m.key), items = m.items;
       if (PT_KEY.test(key) && Array.isArray(items) && JSON.stringify(items).length < 200000) {
-        const res = items.length
-          ? await sb.from('ptable_notes').upsert({user_id:uid, key, items, updated_at:new Date().toISOString()}, {onConflict:'user_id,key'})
-          : await sb.from('ptable_notes').delete().eq('user_id', uid).eq('key', key);
-        ok = !res.error;
-        if (ok) { if (items.length) PT.notes[key] = items; else delete PT.notes[key]; }
+        const prev = await lget('pt', key);
+        await lput('pt', {key, items, dirty:1, at:Date.now()});
+        if (!(prev && prev.dirty)) PT.dirty = (PT.dirty || 0) + 1;
+        if (items.length) PT.notes[key] = items; else delete PT.notes[key];
+        ok = true; kickSync();
       }
     } catch(_){}
     e.source.postMessage({pt:'saved', id:m.id, ok}, location.origin);
@@ -1527,20 +1737,54 @@ function bindPt(){
 
 /* ---------- auth & boot ---------- */
 const CONFIGURED = SUPABASE_URL && SUPABASE_ANON_KEY && !/YOUR_/.test(SUPABASE_URL + SUPABASE_ANON_KEY) && window.supabase;
+const USER_LS = 'konkor-user';   // last signed-in user, so the app can open offline without asking Supabase
+function cachedUser(){ try { const u = JSON.parse(localStorage.getItem(USER_LS) || 'null'); return u && u.id ? u : null; } catch(_){ return null; } }
+function rememberUser(u){ try { localStorage.setItem(USER_LS, JSON.stringify({id:u.id, email:u.email || ''})); } catch(_){} }
+function forgetUser(){ try { localStorage.removeItem(USER_LS); } catch(_){} }
+// Requests that hang (common during shutdowns) are cut off so the app never waits forever.
+function timedFetch(input, init){
+  init = init || {};
+  const url = String((input && input.url) || input);
+  const ms = /\/storage\/v1\/object\//.test(url) ? 180000 : 25000;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  if (init.signal) { if (init.signal.aborted) ctl.abort(); else init.signal.addEventListener('abort', () => ctl.abort()); }
+  return fetch(input, {...init, signal:ctl.signal}).finally(() => clearTimeout(timer));
+}
 function showAuth(){ $('auth').hidden = false; $('app').hidden = true; }
+let startSeq = 0;
 async function startApp(user){
-  uid = user.id; $('auth').hidden = true; $('app').hidden = false;
-  S.loaded = false; S.items = []; S.offset = 0; S.hasMore = true; S.counts = {note:0, q:0}; URLS.clear();
+  const seq = ++startSeq;
+  if (LDB.db) { try { LDB.db.close(); } catch(_){} LDB.db = null; }
+  dropAllBlobUrls(); URLS.clear();
+  uid = user.id; rememberUser(user);
+  $('auth').hidden = true; $('app').hidden = false;
+  S.loaded = false; S.all = []; S.items = []; S.hasMore = false; S.counts = {note:0, q:0};
+  SY.state = 'idle'; SY.msg = '';
   render();
-  try { await loadFirst(); }
-  catch(e){ S.loaded = true; note('خواندن اطلاعات انجام نشد. صفحه رو دوباره باز کن.'); render(); }
-  try { await loadPt(); } catch(e){ PT.notes = {}; PT.error = 'missing'; if (PT.frameReady) ptInit(); }
+  try {
+    const db = await openLocal(uid);
+    if (seq !== startSeq) { db.close(); return; }
+    LDB.db = db;
+    await loadLocal();
+  } catch(e){
+    note('حافظه‌ی آفلاین این مرورگر در دسترس نیست (مثلاً در حالت ناشناس). اپ فقط با اینترنت کار می‌کنه.');
+  }
+  if (seq !== startSeq) return;
+  S.loaded = true;
+  refreshList(false);
+  if (PT.frameReady) ptInit();
   restoreTab();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(_){}
+  kickSync(50);
 }
 function stopApp(){
-  uid = null; S.items = []; S.loaded = false; S.hasMore = true; S.offset = 0; S.counts = {note:0, q:0}; URLS.clear();
+  startSeq++;
+  uid = null; S.all = []; S.items = []; S.loaded = false; S.hasMore = false; S.counts = {note:0, q:0};
+  if (LDB.db) { try { LDB.db.close(); } catch(_){} LDB.db = null; }
+  dropAllBlobUrls(); URLS.clear(); clearTimeout(SY.timer); SY.state = 'idle';
   if (mediaObs) { mediaObs.disconnect(); mediaObs = null; }
-  PT.notes = null; PT.frameReady = false; PT.error = '';
+  PT.notes = null; PT.frameReady = false; PT.error = ''; PT.dirty = 0;
   $('pt-frame').setAttribute('src', 'about:blank'); showView('rv');
   if (F) closeSheet();
   showAuth();
@@ -1560,6 +1804,7 @@ async function doAuth(mode){
       : (m.includes('signups not allowed') || m.includes('signup is disabled') || m.includes('signups are disabled')) ? 'ساخت حساب جدید غیرفعاله.'
       : m.includes('not confirmed') ? 'اول ایمیلت رو تأیید کن.'
       : m.includes('rate') ? 'تعداد تلاش زیاده. کمی بعد دوباره امتحان کن.'
+      : isNetErr(error) ? 'به سرور وصل نشد. برای ورود (فقط بار اول) اینترنت لازمه.'
       : 'انجام نشد. اتصال رو چک کن.';
     return;
   }
@@ -1575,10 +1820,29 @@ if ('serviceWorker' in navigator) {
 
 $('auth-form').addEventListener('submit', e => { e.preventDefault(); doAuth('in'); });
 $('auth-signup').onclick = () => doAuth('up');
-$('btn-out').onclick = () => { if (sb) sb.auth.signOut(); };
+// Signing out removes the offline copy from this device, so warn about anything not sent yet.
+$('btn-out').onclick = async () => {
+  if (!uid) return;
+  const n = pendingCount();
+  const msg = n
+    ? `${fa(n)} تغییر هنوز به سرور نرسیده و با خروج برای همیشه پاک می‌شه. مطمئنی می‌خوای خارج بشی؟`
+    : 'با خروج، نسخه‌ی آفلاین از روی این دستگاه پاک می‌شه (اطلاعاتت روی سرور می‌مونه). خارج بشی؟';
+  if (!confirm(msg)) return;
+  const id = uid;
+  forgetUser(); stopApp();
+  try { indexedDB.deleteDatabase('konkor-' + id); } catch(_){}
+  try { await sb.auth.signOut({scope:'local'}); } catch(_){}
+};
+$('sync').onclick = () => {
+  if (SY.state === 'auth') { $('a-err').textContent = 'برای ادامه‌ی همگام‌سازی دوباره وارد شو. اطلاعات روی این دستگاه می‌مونه.'; $('a-email').value = cachedUser()?.email || ''; showAuth(); return; }
+  kickSync(0);
+};
+window.addEventListener('online', () => { if (uid) kickSync(300); });
+setInterval(() => { if (uid && !SY.running && (pendingCount() || SY.state !== 'ok' || Date.now() - S.lastSync > 300000)) kickSync(0); }, 60000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !uid || !S.loaded) return;
-  const paths = [...document.querySelectorAll('[data-path]')].map(el => el.dataset.path).filter(Boolean);
+  kickSync(500);
+  const paths = [...document.querySelectorAll('[data-path]')].map(el => el.dataset.path).filter(p => p && !BLOBS.has(p));
   if (paths.length) signPaths(paths).then(() => {
     document.querySelectorAll('[data-path]').forEach(el => {
       const u = urlOf(el.dataset.path);
@@ -1593,12 +1857,19 @@ if (!CONFIGURED) {
   $('auth-in').disabled = $('auth-signup').disabled = true;
   showAuth();
 } else {
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  showAuth();
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {global:{fetch:timedFetch}});
+  // Open straight away from the device copy; Supabase sign-in is only needed for syncing.
+  const cu = cachedUser();
+  if (cu) startApp(cu); else showAuth();
   sb.auth.onAuthStateChange((event, session) => {
     setTimeout(() => {
-      if (session && session.user) { if (uid !== session.user.id) startApp(session.user); }
-      else if (uid) stopApp();
+      if (session && session.user) {
+        if (uid !== session.user.id) startApp(session.user);
+        else { rememberUser(session.user); $('auth').hidden = true; $('app').hidden = false; $('a-err').textContent = ''; kickSync(200); }
+      } else if (event === 'SIGNED_OUT' && uid) {
+        // the server rejected the saved login: keep the device copy and ask to sign in again to resume syncing
+        SY.state = 'auth'; syncUi();
+      }
     }, 0);
   });
 }
